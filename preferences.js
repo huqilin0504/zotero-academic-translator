@@ -8,6 +8,8 @@
   const GEMINI_MODEL = 'gemini-3.8-flash';
   const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com';
   const DEFAULTS = Object.assign({}, SHARED_DEFAULTS);
+  const remoteModelsByEndpoint = Object.create(null);
+  let modelRefreshGeneration = 0;
 
   function providerApiKey(config, endpoint) {
     if (endpoint === 'deepseek') {
@@ -64,10 +66,10 @@
   };
 
   const MODEL_HINTS = {
-    deepseek: 'DeepSeek 官方模型；deepseek-flash 支持图片输入，适合划词翻译和图片问答。',
-    gemini: 'Gemini 官方模型；可在 Google 模型目录中确认区域与账号可用性。',
+    deepseek: 'DeepSeek 模型由 API 实时读取；读取失败时保留内置提示。',
+    gemini: 'Gemini 模型由 API 实时读取；只显示支持 generateContent 的模型。',
     agy: 'Agy 模型取决于本机 CLI 配置；列表仅作常用值提示。',
-    ollama: 'Ollama 模型取决于本机已下载的模型；列表仅作常用值提示。',
+    ollama: 'Ollama 模型由本机 API 实时读取；也可手动填写自定义模型。',
   };
 
   function element(id) {
@@ -169,10 +171,12 @@
     return false;
   }
 
-  function populateModelOptions(endpoint, preferredModel) {
+  function populateModelOptions(endpoint, preferredModel, suppliedOptions) {
     const select = element('gemini-translator-model');
     if (!select) return;
-    const options = MODEL_CATALOG[endpoint] || [];
+    const options = Array.isArray(suppliedOptions)
+      ? suppliedOptions
+      : remoteModelsByEndpoint[endpoint] || MODEL_CATALOG[endpoint] || [];
     const original = String(preferredModel || '').trim();
     const useDefault = !original || likelyBelongsToAnotherProvider(endpoint, original);
     const defaultValue = options[0]?.value || original;
@@ -203,6 +207,59 @@
 
     const hint = element('gemini-translator-model-hint');
     if (hint) hint.textContent = MODEL_HINTS[endpoint] || '可填写供应商提供的自定义模型名。';
+  }
+
+  function setModelRefreshStatus(text) {
+    const status = element('gemini-translator-model-status');
+    if (status) status.textContent = text || '';
+  }
+
+  async function refreshModelCatalog() {
+    const generation = ++modelRefreshGeneration;
+    const endpoint = selectedEndpoint();
+    const refreshButton = element('gemini-translator-model-refresh');
+    const dynamicEndpoint = endpoint === 'deepseek' || endpoint === 'gemini' || endpoint === 'ollama';
+    if (!dynamicEndpoint) {
+      setModelRefreshStatus(endpoint === 'agy' ? 'Agy 模型由本机配置决定' : '');
+      if (refreshButton) refreshButton.disabled = true;
+      return;
+    }
+
+    const runtime = Zotero.GeminiTranslatorRuntime;
+    if (typeof runtime?.listModels !== 'function') {
+      setModelRefreshStatus('运行时尚未准备好，使用内置列表');
+      return;
+    }
+
+    const apiKey = endpoint === 'deepseek' || endpoint === 'gemini'
+      ? getValue('gemini-translator-api-key')
+      : '';
+    if (refreshButton) refreshButton.disabled = true;
+    setModelRefreshStatus('正在读取模型…');
+    try {
+      const result = await runtime.listModels({
+        endpointType: endpoint,
+        apiBaseUrl: getValue('gemini-translator-endpoint-value'),
+        apiKey,
+      });
+      if (generation !== modelRefreshGeneration) return;
+      if (result?.available && Array.isArray(result.models) && result.models.length) {
+        remoteModelsByEndpoint[endpoint] = result.models;
+        const preferred = currentModelValue();
+        populateModelOptions(endpoint, preferred, result.models);
+        setModelRefreshStatus(result.detail || `已读取 ${result.models.length} 个模型`);
+      } else {
+        setModelRefreshStatus(`${result?.detail || '读取失败'}，使用内置列表`);
+        populateModelOptions(endpoint, currentModelValue());
+      }
+    } catch (err) {
+      if (generation !== modelRefreshGeneration) return;
+      setModelRefreshStatus('读取失败，使用内置列表');
+      populateModelOptions(endpoint, currentModelValue());
+      Zotero.debug?.('[Gemini Translator] 读取模型列表失败: ' + (err.message || err));
+    } finally {
+      if (generation === modelRefreshGeneration && refreshButton) refreshButton.disabled = false;
+    }
   }
 
   function clampNumber(value, fallback, min, max) {
@@ -260,6 +317,7 @@
       keyInput.setAttribute('aria-label', endpoint === 'gemini' ? 'Gemini API Key' : 'DeepSeek API Key');
     }
     populateModelOptions(endpoint, previousModel);
+    void refreshModelCatalog();
   }
 
   function loadIntoForm(config) {
@@ -400,6 +458,9 @@
       this._initialized = true;
       loadIntoForm(readConfig());
       element('gemini-translator-endpoint-type')?.addEventListener('change', updateEndpointFields);
+      element('gemini-translator-model-refresh')?.addEventListener('command', function () {
+        void refreshModelCatalog();
+      });
       element('gemini-translator-model')?.addEventListener('change', function () {
         setCustomModelVisibility(this.value === '__custom__');
       });

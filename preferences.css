@@ -237,6 +237,20 @@ html|textarea.gemini-prefs-control {
   line-height: 1.35;
 }
 
+.gemini-prefs-model-status {
+  min-height: 15px;
+  margin: 3px 0 0 105px;
+  color: GrayText;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.gemini-prefs-model-refresh {
+  min-width: 52px;
+  margin-inline-start: 6px;
+  white-space: nowrap;
+}
+
 .gemini-prefs-model-custom-row[hidden] {
   display: none;
 }

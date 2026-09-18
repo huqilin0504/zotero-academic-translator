@@ -30,12 +30,14 @@
     <hbox class="gemini-prefs-row" align="center">
       <label value="模型名称" />
       <html:select id="gemini-translator-model" class="gemini-prefs-control" aria-label="模型名称" />
+      <button id="gemini-translator-model-refresh" class="gemini-prefs-model-refresh" label="刷新" />
     </hbox>
     <hbox id="gemini-translator-model-custom-row" class="gemini-prefs-row" align="center" hidden="true">
       <label value="自定义模型" />
       <html:input id="gemini-translator-model-custom" class="gemini-prefs-control" type="text" placeholder="填写供应商提供的模型名" />
     </hbox>
     <html:div id="gemini-translator-model-hint" class="gemini-prefs-model-hint" />
+    <html:div id="gemini-translator-model-status" class="gemini-prefs-model-status" aria-live="polite" />
 
     <hbox id="gemini-translator-api-key-row" class="gemini-prefs-row" align="center">
       <label value="API Key" />

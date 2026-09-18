@@ -12,6 +12,7 @@ import { destroyDocumentTaskStatusBar, ensureDocumentTaskStatusBar } from './doc
 import { ImageAttachment } from './types';
 import { readPersistentJson, writePersistentJson } from './persistentStore';
 import { readSecureApiKeys, writeSecureApiKeys } from './secretStore';
+import { fetchProviderModels, ModelCatalogRequest } from './modelCatalog';
 
 let listenerID: string | null = null;
 let popupHandler: any = null;
@@ -129,6 +130,13 @@ function exposeRuntimeBridge(): void {
         deepseekApiKey: String(keys?.deepseekApiKey || '').trim(),
         geminiApiKey: String(keys?.geminiApiKey || '').trim(),
       }),
+      listModels: async (request: ModelCatalogRequest) => {
+        const secure = readSecureApiKeys();
+        const endpoint = String(request?.endpointType || '').trim().toLowerCase();
+        const apiKey = String(request?.apiKey || '').trim() ||
+          (endpoint === 'deepseek' ? secure.deepseekApiKey : endpoint === 'gemini' ? secure.geminiApiKey : '');
+        return fetchProviderModels({ ...request, apiKey });
+      },
       checkTools: async (config: ReturnType<typeof loadConfig>) => ({
         agy: await checkExecutable(config.agyPath || 'agy'),
         pdf2zh: await checkExecutable(config.pdf2zhPath || 'pdf2zh'),

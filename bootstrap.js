@@ -22351,6 +22351,130 @@ if __name__ == "__main__":
     });
   }
 
+  // src/modelCatalog.ts
+  var DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+  var DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
+  var MAX_MODEL_COUNT = 200;
+  var REQUEST_TIMEOUT_MS = 8e3;
+  function cleanBaseUrl(value, fallback) {
+    const normalized = String(value || fallback).trim().replace(/\/+$/, "");
+    return normalized.replace(/\/(?:chat\/completions|models|tags)$/i, "");
+  }
+  function modelId(value) {
+    return String(value || "").trim().replace(/^models\//, "").slice(0, 200);
+  }
+  function uniqueModels(models) {
+    const seen = /* @__PURE__ */ new Set();
+    const result = [];
+    for (const model of models) {
+      const value = modelId(model.value);
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      result.push({ value, label: model.label?.trim() || value });
+      if (result.length >= MAX_MODEL_COUNT) break;
+    }
+    return result;
+  }
+  function requestFor(config) {
+    const endpoint = String(config.endpointType || "").trim().toLowerCase();
+    const apiKey = String(config.apiKey || "").trim();
+    if (endpoint === "deepseek") {
+      const base = cleanBaseUrl(config.apiBaseUrl, DEFAULT_DEEPSEEK_BASE_URL);
+      return {
+        url: `${base}/models`,
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+      };
+    }
+    if (endpoint === "gemini") {
+      const base = cleanBaseUrl(config.apiBaseUrl, DEFAULT_GEMINI_BASE_URL).replace(/\/v1beta$/i, "");
+      return {
+        url: `${base}/v1beta/models?pageSize=1000`,
+        headers: apiKey ? { "x-goog-api-key": apiKey } : {}
+      };
+    }
+    if (endpoint === "ollama") {
+      const base = cleanBaseUrl(config.apiBaseUrl, "http://127.0.0.1:11434/v1");
+      const url = `${base.replace(/\/v1$/i, "")}/api/tags`;
+      return {
+        url,
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+      };
+    }
+    if (endpoint === "openai") {
+      const base = cleanBaseUrl(config.apiBaseUrl, "http://127.0.0.1:11434/v1");
+      return {
+        url: `${base}/models`,
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+      };
+    }
+    return null;
+  }
+  function parseModels(endpoint, payload) {
+    if (endpoint === "gemini") {
+      const models2 = Array.isArray(payload?.models) ? payload.models : [];
+      return uniqueModels(models2.filter((item) => {
+        const methods = item?.supportedGenerationMethods || item?.supportedActions;
+        return !Array.isArray(methods) || methods.includes("generateContent");
+      }).map((item) => {
+        const value = modelId(item?.baseModelId || item?.name);
+        const displayName = String(item?.displayName || "").trim();
+        return { value, label: displayName && displayName !== value ? `${displayName} (${value})` : value };
+      }));
+    }
+    if (endpoint === "ollama") {
+      const models2 = Array.isArray(payload?.models) ? payload.models : [];
+      return uniqueModels(models2.map((item) => {
+        const value = modelId(item?.name || item?.model || item?.id);
+        return { value, label: value };
+      }));
+    }
+    const models = Array.isArray(payload?.data) ? payload.data : [];
+    return uniqueModels(models.map((item) => {
+      const value = modelId(typeof item === "string" ? item : item?.id || item?.name);
+      const displayName = String(item?.displayName || "").trim();
+      return { value, label: displayName && displayName !== value ? `${displayName} (${value})` : value };
+    }));
+  }
+  async function fetchProviderModels(config) {
+    const endpoint = String(config.endpointType || "").trim().toLowerCase();
+    if (endpoint === "agy") {
+      return { available: false, models: [], detail: "agy \u6CA1\u6709\u53EF\u8BFB\u53D6\u7684\u6A21\u578B\u5217\u8868 API" };
+    }
+    if ((endpoint === "deepseek" || endpoint === "gemini") && !String(config.apiKey || "").trim()) {
+      return { available: false, models: [], detail: "\u8BF7\u5148\u586B\u5199 API Key" };
+    }
+    const request = requestFor(config);
+    if (!request) return { available: false, models: [], detail: "\u5F53\u524D\u5F15\u64CE\u4E0D\u652F\u6301\u6A21\u578B\u5217\u8868 API" };
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timeout = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : null;
+    try {
+      const response = await getFetch()(
+        request.url,
+        {
+          method: "GET",
+          headers: request.headers,
+          ...controller ? { signal: controller.signal } : {}
+        }
+      );
+      if (!response.ok) {
+        return { available: false, models: [], detail: `\u6A21\u578B\u5217\u8868\u8BF7\u6C42\u5931\u8D25\uFF08HTTP ${response.status}\uFF09` };
+      }
+      const payload = await response.json();
+      const models = parseModels(endpoint, payload);
+      if (!models.length) {
+        return { available: false, models: [], detail: "API \u672A\u8FD4\u56DE\u53EF\u7528\u4E8E\u751F\u6210\u5185\u5BB9\u7684\u6A21\u578B" };
+      }
+      return { available: true, models, detail: `\u5DF2\u8BFB\u53D6 ${models.length} \u4E2A\u6A21\u578B` };
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        return { available: false, models: [], detail: "\u8BFB\u53D6\u6A21\u578B\u5217\u8868\u8D85\u65F6" };
+      }
+      return { available: false, models: [], detail: "\u65E0\u6CD5\u8FDE\u63A5\u6A21\u578B\u5217\u8868 API" };
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
   // src/bootstrap.ts
   var listenerID = null;
   var popupHandler = null;
@@ -22440,6 +22564,12 @@ if __name__ == "__main__":
           deepseekApiKey: String(keys?.deepseekApiKey || "").trim(),
           geminiApiKey: String(keys?.geminiApiKey || "").trim()
         }),
+        listModels: async (request) => {
+          const secure = readSecureApiKeys();
+          const endpoint = String(request?.endpointType || "").trim().toLowerCase();
+          const apiKey = String(request?.apiKey || "").trim() || (endpoint === "deepseek" ? secure.deepseekApiKey : endpoint === "gemini" ? secure.geminiApiKey : "");
+          return fetchProviderModels({ ...request, apiKey });
+        },
         checkTools: async (config) => ({
           agy: await checkExecutable(config.agyPath || "agy"),
           pdf2zh: await checkExecutable(config.pdf2zhPath || "pdf2zh")
