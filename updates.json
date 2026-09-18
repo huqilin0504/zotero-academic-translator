@@ -5,7 +5,7 @@
         {
           "version": "1.0.49",
           "update_link": "https://github.com/huqilin0504/zotero-academic-translator/releases/download/v1.0.49/zotero-academic-translator-1.0.49.xpi",
-          "update_hash": "sha256:76c75d03213ad9d2fbf48738093e800b87d5d6545f5b9a0d146cf4174f5d4d4f",
+          "update_hash": "sha256:58d1372c6d49d8883a996ae4e56fac0fd8fc555d63267f7e02c979621c4f81d1",
           "applications": {
             "zotero": {
               "strict_min_version": "7.0",

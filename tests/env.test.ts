@@ -1,7 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { checkExecutable, copyTextToClipboard, persistImageFile, removeTempImageAttachment } from '../src/env';
+import { checkExecutable, copyTextToClipboard, getFetch, persistImageFile, removeTempImageAttachment } from '../src/env';
+
+test('env: API 请求优先使用 Zotero 主窗口特权 fetch，避免 PDF iframe CORS', () => {
+  const globals = globalThis as any;
+  const previousZotero = globals.Zotero;
+  let mainThis: unknown;
+  const mainWindow = {
+    fetch(this: unknown) {
+      mainThis = this;
+      return Promise.resolve({} as Response);
+    },
+  };
+  const readerFetch = () => Promise.resolve({} as Response);
+  globals.Zotero = { getMainWindow: () => mainWindow };
+
+  try {
+    const selected = getFetch({ defaultView: { fetch: readerFetch } } as unknown as Document);
+    void selected('https://api.deepseek.com');
+    assert.equal(mainThis, mainWindow);
+  } finally {
+    if (previousZotero === undefined) delete globals.Zotero;
+    else globals.Zotero = previousZotero;
+  }
+});
 
 test('env: 优先使用 Zotero 内部剪贴板封装', async () => {
   const globals = globalThis as any;

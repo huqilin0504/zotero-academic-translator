@@ -150,7 +150,7 @@
   };
   function getLoginManager() {
     const globals = globalThis;
-    const chromeUtils = globals.ChromeUtils;
+    const chromeUtils = globals.ChromeUtils || (typeof ChromeUtils !== "undefined" ? ChromeUtils : null);
     try {
       if (typeof chromeUtils?.importESModule === "function") {
         const servicesModule = chromeUtils.importESModule("resource://gre/modules/Services.sys.mjs");
@@ -413,14 +413,14 @@
   var MAX_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
   var IMAGE_TEMP_DIR = "/tmp/zotero-gemini-translator-images";
   function getFetch(doc) {
-    if (doc?.defaultView?.fetch) {
-      return doc.defaultView.fetch.bind(doc.defaultView);
-    }
     if (typeof Zotero !== "undefined") {
       const win = Zotero.getMainWindow?.();
       if (win?.fetch) {
         return win.fetch.bind(win);
       }
+    }
+    if (doc?.defaultView?.fetch) {
+      return doc.defaultView.fetch.bind(doc.defaultView);
     }
     if (typeof fetch !== "undefined") {
       return fetch;

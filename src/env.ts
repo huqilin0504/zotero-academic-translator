@@ -8,14 +8,18 @@ export const MAX_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const IMAGE_TEMP_DIR = '/tmp/zotero-gemini-translator-images';
 
 export function getFetch(doc?: Document): typeof fetch {
-  if (doc?.defaultView?.fetch) {
-    return doc.defaultView.fetch.bind(doc.defaultView);
-  }
+  // Reader PDF documents live in a content/iframe principal. Its fetch is
+  // subject to the provider's CORS policy and DeepSeek/Gemini commonly return
+  // a bare NetworkError before the response reaches the plugin. Use Zotero's
+  // privileged main window first for cross-origin provider requests.
   if (typeof Zotero !== 'undefined') {
     const win = Zotero.getMainWindow?.();
     if (win?.fetch) {
       return win.fetch.bind(win);
     }
+  }
+  if (doc?.defaultView?.fetch) {
+    return doc.defaultView.fetch.bind(doc.defaultView);
   }
   if (typeof fetch !== 'undefined') {
     return fetch;
