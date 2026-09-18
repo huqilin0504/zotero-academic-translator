@@ -37,6 +37,13 @@ test('client: Agy 启动参数禁止自动批准工具权限', () => {
   assert.deepEqual(args.slice(-2), ['--mode', 'plan']);
 });
 
+test('client: Agy 启动参数可以恢复已有 conversation ID', () => {
+  const args = buildAgyArgs('gemini-test', 'low', 'conversation-123');
+  const index = args.indexOf('--conversation');
+  assert.notEqual(index, -1);
+  assert.equal(args[index + 1], 'conversation-123');
+});
+
 test('client: 划词提问 Agy 参数使用 high 思考强度', () => {
   const args = buildAgyArgs('gemini-test', 'high');
   assert.equal(args[args.indexOf('--effort') + 1], 'high');
@@ -574,6 +581,89 @@ rl.on('line', (line) => {
     shutdownAgySession();
     if (previousStarts === undefined) delete process.env.AGY_SHARED_STARTS;
     else process.env.AGY_SHARED_STARTS = previousStarts;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('client: Agy conversation ID 持久化并用于重启后的会话恢复', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const os = await import('node:os');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-conversation-persist-'));
+  const mockAgyScript = path.join(tmpDir, 'mock-agy.cjs');
+  const argsFile = path.join(tmpDir, 'args.jsonl');
+  fs.writeFileSync(
+    mockAgyScript,
+    `#!/usr/bin/env node
+const fs = require('fs');
+const readline = require('readline');
+fs.appendFileSync(process.env.AGY_CONVERSATION_ARGS, JSON.stringify(process.argv.slice(2)) + '\\n');
+process.stdout.write(JSON.stringify({ event: 'init', conversation_id: 'persisted-conversation-id', init: { conversation_id: 'persisted-conversation-id' } }) + '\\n');
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  if (!line.trim()) return;
+  try {
+    const data = JSON.parse(line);
+    if (data.event !== 'user') return;
+    process.stdout.write(JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: '恢复成功' } }) + '\\n');
+    process.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', conversation_id: 'persisted-conversation-id' } }) + '\\n');
+  } catch (_) {}
+});
+`,
+    { mode: 0o755 }
+  );
+
+  const config: PluginConfig = {
+    endpointType: 'agy',
+    apiBaseUrl: '',
+    apiKey: '',
+    model: 'test-model',
+    agyPath: mockAgyScript,
+    targetLanguage: '简体中文',
+    systemPrompt: '',
+    enableKaTeX: false,
+    cacheSize: 20,
+    autoTranslate: true,
+  };
+  const previousZotero = (globalThis as any).Zotero;
+  const previousArgsPath = process.env.AGY_CONVERSATION_ARGS;
+  let prefRaw = '';
+  (globalThis as any).Zotero = {
+    Prefs: {
+      get: () => prefRaw,
+      set: (_key: string, value: string) => { prefRaw = value; },
+    },
+  };
+  process.env.AGY_CONVERSATION_ARGS = argsFile;
+
+  const callbacks = {
+    onChunk: () => {},
+    onDone: () => {},
+    onError: (err: Error) => assert.fail(err.message),
+  };
+  try {
+    assert.equal(await streamTranslate('first', config, callbacks), '恢复成功');
+    shutdownAgySession();
+    assert.equal(await streamTranslate('second', config, callbacks), '恢复成功');
+
+    const args = fs.readFileSync(argsFile, 'utf8')
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as string[]);
+    assert.equal(args.length, 2);
+    assert.equal(args[0].includes('--conversation'), false);
+    const conversationIndex = args[1].indexOf('--conversation');
+    assert.notEqual(conversationIndex, -1);
+    assert.equal(args[1][conversationIndex + 1], 'persisted-conversation-id');
+    assert.match(prefRaw, /persisted-conversation-id/);
+  } finally {
+    shutdownAgySession();
+    if (previousZotero === undefined) delete (globalThis as any).Zotero;
+    else (globalThis as any).Zotero = previousZotero;
+    if (previousArgsPath === undefined) delete process.env.AGY_CONVERSATION_ARGS;
+    else process.env.AGY_CONVERSATION_ARGS = previousArgsPath;
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

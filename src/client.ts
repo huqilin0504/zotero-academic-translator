@@ -1,6 +1,7 @@
 import { ImageAttachment, PluginConfig, StreamCallbacks } from './types';
 import { getFetch, getTextDecoder, getSubprocess } from './env';
 import { getApiKeyForEndpoint } from './config';
+import { readPersistentJson, writePersistentJson } from './persistentStore';
 
 /**
  * 划词提问的固定系统约束。选中文本和问题都按不可信数据处理，避免论文内容
@@ -144,6 +145,57 @@ interface ActiveTurn {
 
 export type AgyEffort = 'low' | 'medium' | 'high';
 
+const AGY_CONVERSATIONS_STORAGE_KEY = 'extensions.gemini-translator.agy-conversations';
+const MAX_PERSISTED_AGY_CONVERSATIONS = 8;
+
+interface PersistedAgyConversation {
+  conversationId: string;
+  updatedAt: number;
+}
+
+type PersistedAgyConversationStore = Record<string, PersistedAgyConversation>;
+
+function readAgyConversationId(workerKey: string): string {
+  const store = readPersistentJson<PersistedAgyConversationStore>(
+    AGY_CONVERSATIONS_STORAGE_KEY,
+    {}
+  );
+  const entry = store && typeof store === 'object' && !Array.isArray(store)
+    ? store[workerKey]
+    : undefined;
+  return typeof entry?.conversationId === 'string' ? entry.conversationId.trim() : '';
+}
+
+function saveAgyConversationId(workerKey: string, conversationId: string): void {
+  const normalizedId = String(conversationId || '').trim();
+  if (!normalizedId) return;
+  const store = readPersistentJson<PersistedAgyConversationStore>(
+    AGY_CONVERSATIONS_STORAGE_KEY,
+    {}
+  );
+  const normalizedStore = store && typeof store === 'object' && !Array.isArray(store) ? store : {};
+  normalizedStore[workerKey] = { conversationId: normalizedId, updatedAt: Date.now() };
+  const recentKeys = Object.entries(normalizedStore)
+    .sort(([, left], [, right]) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0))
+    .slice(0, MAX_PERSISTED_AGY_CONVERSATIONS)
+    .map(([key]) => key);
+  const recent = new Set(recentKeys);
+  for (const key of Object.keys(normalizedStore)) {
+    if (!recent.has(key)) delete normalizedStore[key];
+  }
+  writePersistentJson(AGY_CONVERSATIONS_STORAGE_KEY, normalizedStore);
+}
+
+function clearAgyConversationId(workerKey: string): void {
+  const store = readPersistentJson<PersistedAgyConversationStore>(
+    AGY_CONVERSATIONS_STORAGE_KEY,
+    {}
+  );
+  if (!store || typeof store !== 'object' || Array.isArray(store) || !(workerKey in store)) return;
+  delete store[workerKey];
+  writePersistentJson(AGY_CONVERSATIONS_STORAGE_KEY, store);
+}
+
 // Agy 把部分模型的思考档位编码在模型名末尾，并校验它与 --effort 一致。
 // 例如 gemini-3.8-flash-low + --effort high 会在初始化前直接退出。
 const AGY_MODEL_VARIANTS = new Set([
@@ -192,8 +244,8 @@ export function resolveAgyModelForEffort(model: string, effort: AgyEffort): stri
   return normalized;
 }
 
-export function buildAgyArgs(model: string, effort: AgyEffort = 'low'): string[] {
-  return [
+export function buildAgyArgs(model: string, effort: AgyEffort = 'low', conversationId = ''): string[] {
+  const args = [
     '-p',
     '',
     '--input-format',
@@ -208,6 +260,11 @@ export function buildAgyArgs(model: string, effort: AgyEffort = 'low'): string[]
     '--mode',
     'plan',
   ];
+  const normalizedConversationId = String(conversationId || '').trim();
+  if (normalizedConversationId) {
+    args.push('--conversation', normalizedConversationId);
+  }
+  return args;
 }
 
 /**
@@ -224,6 +281,7 @@ export class AgyWorker {
   private currentTurn: ActiveTurn | null = null;
   private turnQueue: ActiveTurn[] = [];
   private stderrBuffer = '';
+  private conversationId: string;
   public readyPromise: Promise<void>;
   private resolveReady!: () => void;
   private rejectReady!: (err: any) => void;
@@ -233,9 +291,12 @@ export class AgyWorker {
   constructor(
     public readonly agyBin: string,
     public readonly model: string,
-    public readonly effort: AgyEffort = 'low'
+    public readonly effort: AgyEffort = 'low',
+    resumeConversationId = '',
+    private readonly onConversationId?: (conversationId: string) => void
   ) {
     this.configKey = `${agyBin}::${model}::${effort}`;
+    this.conversationId = String(resumeConversationId || '').trim();
     this.readyPromise = new Promise<void>((resolve, reject) => {
       this.resolveReady = resolve;
       this.rejectReady = reject;
@@ -266,9 +327,26 @@ export class AgyWorker {
     return this.configKey === `${agyBin}::${model}::${effort}` && this.alive;
   }
 
+  public getConversationId(): string {
+    return this.conversationId;
+  }
+
+  private updateConversationId(data: any): void {
+    const candidate = data?.conversation_id
+      || data?.conversationId
+      || data?.init?.conversation_id
+      || data?.init?.conversationId
+      || data?.result?.conversation_id
+      || data?.result?.conversationId;
+    const nextId = typeof candidate === 'string' ? candidate.trim() : '';
+    if (!nextId || nextId === this.conversationId) return;
+    this.conversationId = nextId;
+    this.onConversationId?.(nextId);
+  }
+
   public async start(): Promise<void> {
     const Subprocess = getSubprocess();
-    const args = buildAgyArgs(this.model, this.effort);
+    const args = buildAgyArgs(this.model, this.effort, this.conversationId);
     this.stderrBuffer = '';
 
     // 1. Zotero 7 原生环境 (Mozilla Subprocess XPCOM)
@@ -400,6 +478,7 @@ export class AgyWorker {
       if (!trimmed) continue;
       try {
         const data = JSON.parse(trimmed);
+        this.updateConversationId(data);
         if (data.event === 'init') {
           this.markReady();
         } else if (data.event === 'step_update') {
@@ -413,6 +492,9 @@ export class AgyWorker {
             }
           }
         } else if (data.event === 'result') {
+          if (data.result?.status === 'ERROR' && !this.readySettled) {
+            this.failReady(new Error(data.result?.error || 'agy 会话恢复失败'));
+          }
           if (this.currentTurn) {
             const turn = this.currentTurn;
             this.currentTurn = null;
@@ -640,20 +722,46 @@ export async function getOrCreateAgyWorker(
     activeAgyWorkers.delete(workerKey);
   }
 
-  const worker = new AgyWorker(agyBin, model, effort);
+  const persistedConversationId = readAgyConversationId(workerKey);
+  const createWorker = (conversationId: string): AgyWorker => new AgyWorker(
+    agyBin,
+    model,
+    effort,
+    conversationId,
+    (nextId) => saveAgyConversationId(workerKey, nextId)
+  );
+  let worker = createWorker(persistedConversationId);
   activeAgyWorkers.set(workerKey, worker);
   try {
     await worker.start();
     // start() 只负责创建子进程；等待 init 握手后才算真正可用。
     // 这样后台预热失败能被捕获并重试，首次划词也不会撞上半启动进程。
     await worker.readyPromise;
+    if (worker.getConversationId()) saveAgyConversationId(workerKey, worker.getConversationId());
     return worker;
   } catch (e) {
-    if (activeAgyWorkers.get(workerKey) === worker) {
-      activeAgyWorkers.delete(workerKey);
+    if (!persistedConversationId) {
+      if (activeAgyWorkers.get(workerKey) === worker) activeAgyWorkers.delete(workerKey);
+      worker.kill();
+      throw e;
     }
+
+    // 云端会话可能已过期或被删除；清掉失效 ID 后只重试一次新会话，
+    // 避免每次 Zotero 启动都卡在同一个不可恢复的会话上。
     worker.kill();
-    throw e;
+    clearAgyConversationId(workerKey);
+    worker = createWorker('');
+    activeAgyWorkers.set(workerKey, worker);
+    try {
+      await worker.start();
+      await worker.readyPromise;
+      if (worker.getConversationId()) saveAgyConversationId(workerKey, worker.getConversationId());
+      return worker;
+    } catch (freshError) {
+      if (activeAgyWorkers.get(workerKey) === worker) activeAgyWorkers.delete(workerKey);
+      worker.kill();
+      throw freshError;
+    }
   }
 }
 

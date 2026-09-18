@@ -510,6 +510,39 @@
     }
   }
 
+  // src/persistentStore.ts
+  function readPersistentJson(key, fallback, doc) {
+    const zotero = globalThis.Zotero;
+    try {
+      const raw = zotero?.Prefs?.get?.(key);
+      if (typeof raw === "string" && raw) return JSON.parse(raw);
+    } catch (_) {
+    }
+    try {
+      const storage = doc?.defaultView?.localStorage || globalThis.localStorage;
+      const raw = storage?.getItem?.(key);
+      if (typeof raw === "string" && raw) return JSON.parse(raw);
+    } catch (_) {
+    }
+    return fallback;
+  }
+  function writePersistentJson(key, value, doc) {
+    const serialized = JSON.stringify(value);
+    const zotero = globalThis.Zotero;
+    try {
+      if (typeof zotero?.Prefs?.set === "function") {
+        zotero.Prefs.set(key, serialized);
+        return;
+      }
+    } catch (_) {
+    }
+    try {
+      const storage = doc?.defaultView?.localStorage || globalThis.localStorage;
+      storage?.setItem?.(key, serialized);
+    } catch (_) {
+    }
+  }
+
   // src/client.ts
   var DEFAULT_QUESTION_SYSTEM_PROMPT = `You are an academic reading assistant.
 Answer the user's question using the supplied paper context, selected passage, and conversation history.
@@ -599,6 +632,41 @@ ${userPrompt}` }];
     }
     return null;
   }
+  var AGY_CONVERSATIONS_STORAGE_KEY = "extensions.gemini-translator.agy-conversations";
+  var MAX_PERSISTED_AGY_CONVERSATIONS = 8;
+  function readAgyConversationId(workerKey) {
+    const store = readPersistentJson(
+      AGY_CONVERSATIONS_STORAGE_KEY,
+      {}
+    );
+    const entry = store && typeof store === "object" && !Array.isArray(store) ? store[workerKey] : void 0;
+    return typeof entry?.conversationId === "string" ? entry.conversationId.trim() : "";
+  }
+  function saveAgyConversationId(workerKey, conversationId) {
+    const normalizedId = String(conversationId || "").trim();
+    if (!normalizedId) return;
+    const store = readPersistentJson(
+      AGY_CONVERSATIONS_STORAGE_KEY,
+      {}
+    );
+    const normalizedStore = store && typeof store === "object" && !Array.isArray(store) ? store : {};
+    normalizedStore[workerKey] = { conversationId: normalizedId, updatedAt: Date.now() };
+    const recentKeys = Object.entries(normalizedStore).sort(([, left], [, right]) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0)).slice(0, MAX_PERSISTED_AGY_CONVERSATIONS).map(([key]) => key);
+    const recent = new Set(recentKeys);
+    for (const key of Object.keys(normalizedStore)) {
+      if (!recent.has(key)) delete normalizedStore[key];
+    }
+    writePersistentJson(AGY_CONVERSATIONS_STORAGE_KEY, normalizedStore);
+  }
+  function clearAgyConversationId(workerKey) {
+    const store = readPersistentJson(
+      AGY_CONVERSATIONS_STORAGE_KEY,
+      {}
+    );
+    if (!store || typeof store !== "object" || Array.isArray(store) || !(workerKey in store)) return;
+    delete store[workerKey];
+    writePersistentJson(AGY_CONVERSATIONS_STORAGE_KEY, store);
+  }
   var AGY_MODEL_VARIANTS = /* @__PURE__ */ new Set([
     "gemini-3.8-flash-low",
     "gemini-3.8-flash-medium",
@@ -630,8 +698,8 @@ ${userPrompt}` }];
     }
     return normalized;
   }
-  function buildAgyArgs(model, effort = "low") {
-    return [
+  function buildAgyArgs(model, effort = "low", conversationId = "") {
+    const args = [
       "-p",
       "",
       "--input-format",
@@ -646,13 +714,20 @@ ${userPrompt}` }];
       "--mode",
       "plan"
     ];
+    const normalizedConversationId = String(conversationId || "").trim();
+    if (normalizedConversationId) {
+      args.push("--conversation", normalizedConversationId);
+    }
+    return args;
   }
   var AgyWorker = class {
-    constructor(agyBin, model, effort = "low") {
+    constructor(agyBin, model, effort = "low", resumeConversationId = "", onConversationId) {
       this.agyBin = agyBin;
       this.model = model;
       this.effort = effort;
+      this.onConversationId = onConversationId;
       this.configKey = `${agyBin}::${model}::${effort}`;
+      this.conversationId = String(resumeConversationId || "").trim();
       this.readyPromise = new Promise((resolve, reject) => {
         this.resolveReady = resolve;
         this.rejectReady = reject;
@@ -666,6 +741,7 @@ ${userPrompt}` }];
     currentTurn = null;
     turnQueue = [];
     stderrBuffer = "";
+    conversationId;
     readyPromise;
     resolveReady;
     rejectReady;
@@ -692,9 +768,19 @@ ${userPrompt}` }];
     isMatching(agyBin, model, effort = "low") {
       return this.configKey === `${agyBin}::${model}::${effort}` && this.alive;
     }
+    getConversationId() {
+      return this.conversationId;
+    }
+    updateConversationId(data) {
+      const candidate = data?.conversation_id || data?.conversationId || data?.init?.conversation_id || data?.init?.conversationId || data?.result?.conversation_id || data?.result?.conversationId;
+      const nextId = typeof candidate === "string" ? candidate.trim() : "";
+      if (!nextId || nextId === this.conversationId) return;
+      this.conversationId = nextId;
+      this.onConversationId?.(nextId);
+    }
     async start() {
       const Subprocess = getSubprocess();
-      const args = buildAgyArgs(this.model, this.effort);
+      const args = buildAgyArgs(this.model, this.effort, this.conversationId);
       this.stderrBuffer = "";
       if (Subprocess?.call) {
         try {
@@ -812,6 +898,7 @@ ${text2}`.trim().slice(-2e3);
         if (!trimmed) continue;
         try {
           const data = JSON.parse(trimmed);
+          this.updateConversationId(data);
           if (data.event === "init") {
             this.markReady();
           } else if (data.event === "step_update") {
@@ -825,6 +912,9 @@ ${text2}`.trim().slice(-2e3);
               }
             }
           } else if (data.event === "result") {
+            if (data.result?.status === "ERROR" && !this.readySettled) {
+              this.failReady(new Error(data.result?.error || "agy \u4F1A\u8BDD\u6062\u590D\u5931\u8D25"));
+            }
             if (this.currentTurn) {
               const turn = this.currentTurn;
               this.currentTurn = null;
@@ -1019,18 +1109,41 @@ ${text2}`.trim().slice(-2e3);
       existingWorker.kill();
       activeAgyWorkers.delete(workerKey);
     }
-    const worker = new AgyWorker(agyBin, model, effort);
+    const persistedConversationId = readAgyConversationId(workerKey);
+    const createWorker = (conversationId) => new AgyWorker(
+      agyBin,
+      model,
+      effort,
+      conversationId,
+      (nextId) => saveAgyConversationId(workerKey, nextId)
+    );
+    let worker = createWorker(persistedConversationId);
     activeAgyWorkers.set(workerKey, worker);
     try {
       await worker.start();
       await worker.readyPromise;
+      if (worker.getConversationId()) saveAgyConversationId(workerKey, worker.getConversationId());
       return worker;
     } catch (e) {
-      if (activeAgyWorkers.get(workerKey) === worker) {
-        activeAgyWorkers.delete(workerKey);
+      if (!persistedConversationId) {
+        if (activeAgyWorkers.get(workerKey) === worker) activeAgyWorkers.delete(workerKey);
+        worker.kill();
+        throw e;
       }
       worker.kill();
-      throw e;
+      clearAgyConversationId(workerKey);
+      worker = createWorker("");
+      activeAgyWorkers.set(workerKey, worker);
+      try {
+        await worker.start();
+        await worker.readyPromise;
+        if (worker.getConversationId()) saveAgyConversationId(workerKey, worker.getConversationId());
+        return worker;
+      } catch (freshError) {
+        if (activeAgyWorkers.get(workerKey) === worker) activeAgyWorkers.delete(workerKey);
+        worker.kill();
+        throw freshError;
+      }
     }
   }
   function prewarmAgySession(config) {
@@ -16743,39 +16856,6 @@ ${lines[index].trim()}`;
     };
     controller.setLoading();
     return controller;
-  }
-
-  // src/persistentStore.ts
-  function readPersistentJson(key, fallback, doc) {
-    const zotero = globalThis.Zotero;
-    try {
-      const raw = zotero?.Prefs?.get?.(key);
-      if (typeof raw === "string" && raw) return JSON.parse(raw);
-    } catch (_) {
-    }
-    try {
-      const storage = doc?.defaultView?.localStorage || globalThis.localStorage;
-      const raw = storage?.getItem?.(key);
-      if (typeof raw === "string" && raw) return JSON.parse(raw);
-    } catch (_) {
-    }
-    return fallback;
-  }
-  function writePersistentJson(key, value, doc) {
-    const serialized = JSON.stringify(value);
-    const zotero = globalThis.Zotero;
-    try {
-      if (typeof zotero?.Prefs?.set === "function") {
-        zotero.Prefs.set(key, serialized);
-        return;
-      }
-    } catch (_) {
-    }
-    try {
-      const storage = doc?.defaultView?.localStorage || globalThis.localStorage;
-      storage?.setItem?.(key, serialized);
-    } catch (_) {
-    }
   }
 
   // src/assistantSidebar.ts
