@@ -121,6 +121,12 @@ python3 scripts/patch_pdf2zh_translator.py \
 
 `npm run patch:pdf2zh` 仍然保留为维护者本机的快捷入口；它使用脚本内的默认路径，不建议直接用于其他电脑。
 
+## 许可证与第三方依赖
+
+插件自有代码按 MIT 许可证发布，见 [`LICENSE`](LICENSE)。`pdf2zh` 不包含在 XPI 中，而是用户自行安装的外部程序；上游 PDFMathTranslate 使用 AGPL-3.0，四个本地补丁脚本也单独标记为 AGPL-3.0-only。KaTeX 公式样式和字体按其 MIT 许可证保留，完整归属和链接见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+
+不要把修改后的完整 `pdf2zh` 源码或二进制重新打进 XPI；如果要分发修改版 `pdf2zh`，必须同时提供对应源代码、保留上游版权/许可证声明并遵守 AGPL-3.0。
+
 ## 数据与隐私
 
 - API Key、引擎配置、问答历史、翻译缓存和 Agy 会话 ID 存在本机 Zotero 首选项中。

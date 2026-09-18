@@ -20,7 +20,7 @@ if (existsSync(xpiFileName)) {
 
 // 2. 打包运行脚本、偏好页资源和图标
 try {
-  execSync(`zip -r ${xpiFileName} manifest.json bootstrap.js preferences.xhtml preferences-defaults.js preferences.js preferences.css icon.png fonts`, { stdio: 'inherit' });
+  execSync(`zip -r ${xpiFileName} manifest.json bootstrap.js preferences.xhtml preferences-defaults.js preferences.js preferences.css icon.png fonts LICENSE THIRD_PARTY_NOTICES.md`, { stdio: 'inherit' });
   // 同步一个稳定文件名，避免文件选择器继续拿到旧版本安装包。
   copyFileSync(xpiFileName, canonicalXpiFileName);
   const stats = statSync(xpiFileName);
