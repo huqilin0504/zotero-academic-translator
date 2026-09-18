@@ -3,11 +3,16 @@ import assert from 'node:assert/strict';
 import {
   ASSISTANT_SIDEBAR_MAX_WIDTH,
   ASSISTANT_SIDEBAR_MIN_WIDTH,
+  ASSISTANT_PERSISTED_TURN_LIMIT,
   clampAssistantSidebarWidth,
   buildAssistantContext,
   formatAssistantConversationForCopy,
   shouldSubmitAssistantInput,
 } from '../src/assistantSidebar';
+
+test('assistant sidebar: 本地历史保留最近 30 轮问答', () => {
+  assert.equal(ASSISTANT_PERSISTED_TURN_LIMIT, 30);
+});
 
 test('assistant sidebar: paper metadata and current selection use bounded data fields', () => {
   const context = buildAssistantContext({
