@@ -20,9 +20,15 @@ const LOGIN_ORIGIN = 'chrome://zotero-academic-translator';
 const LOGIN_REALM = 'Zotero Academic Translator API Key';
 const LOGIN_USERNAME_PREFIX = 'provider:';
 
+const EMPTY_SECURE_KEYS: SecureApiKeys = {
+  available: false,
+  deepseekApiKey: '',
+  geminiApiKey: '',
+};
+
 function getLoginManager(): any | null {
   const globals = globalThis as any;
-  const chromeUtils = globals.ChromeUtils;
+  const chromeUtils = globals.ChromeUtils || (typeof ChromeUtils !== 'undefined' ? ChromeUtils : null);
 
   try {
     if (typeof chromeUtils?.importESModule === 'function') {
@@ -40,14 +46,18 @@ function getLoginManager(): any | null {
     }
   } catch (_) {}
 
-  return globals.Services?.logins || null;
+  const services = globals.Services || (typeof Services !== 'undefined' ? Services : null);
+  return services?.logins || null;
 }
 
 function getLoginInfo(origin: string, realm: string, username: string, password: string): any | null {
   const globals = globalThis as any;
+  // Zotero 7 loads bootstrap modules in a privileged global where Components
+  // is not always exposed as an own property of globalThis. Prefer the legacy
+  // aliases first, then fall back to the Components object when available.
   const components = globals.Components;
-  const classes = components?.classes || globals.Cc;
-  const interfaces = components?.interfaces || globals.Ci;
+  const classes = components?.classes || globals.Cc || (typeof Cc !== 'undefined' ? Cc : null);
+  const interfaces = components?.interfaces || globals.Ci || (typeof Ci !== 'undefined' ? Ci : null);
   const factory = classes?.['@mozilla.org/login-manager/loginInfo;1'];
 
   try {
@@ -83,24 +93,44 @@ function providerFromUsername(username: unknown): SecretProvider | null {
   return null;
 }
 
-function findLogins(manager: any): any[] {
-  if (typeof manager?.findLogins !== 'function') return [];
-  const logins = manager.findLogins({}, LOGIN_ORIGIN, null, LOGIN_REALM);
+function toLoginArray(logins: unknown): any[] {
   if (Array.isArray(logins)) return logins;
-  // Older Gecko/Zotero builds can expose an array-like XPCOM collection.
   try {
-    return logins && typeof logins.length === 'number' ? Array.from(logins) : [];
+    return logins && typeof (logins as any).length === 'number'
+      ? Array.from(logins as ArrayLike<any>)
+      : [];
   } catch (_) {
     return [];
   }
 }
 
+function findLogins(manager: any): any[] {
+  if (typeof manager?.findLogins !== 'function') return [];
+  // Zotero 6/older Gecko exposed the XPCOM four-argument signature with a
+  // count object. Zotero 7's LoginManager.sys.mjs uses the modern three-
+  // argument signature. Calling the old signature on Zotero 7 silently
+  // searches for an object origin and never finds our credential.
+  const logins = !manager.searchLoginsAsync && manager.findLogins.length >= 4
+    ? manager.findLogins({}, LOGIN_ORIGIN, null, LOGIN_REALM)
+    : manager.findLogins(LOGIN_ORIGIN, null, LOGIN_REALM);
+  return toLoginArray(logins);
+}
+
+async function findLoginsAsync(manager: any): Promise<any[]> {
+  if (typeof manager?.searchLoginsAsync === 'function') {
+    const logins = await manager.searchLoginsAsync({
+      origin: LOGIN_ORIGIN,
+      httpRealm: LOGIN_REALM,
+    });
+    return toLoginArray(logins);
+  }
+  return findLogins(manager);
+}
+
 /** Read both provider keys without ever logging their values. */
 export function readSecureApiKeys(): SecureApiKeys {
   const manager = getLoginManager();
-  if (!manager) {
-    return { available: false, deepseekApiKey: '', geminiApiKey: '' };
-  }
+  if (!manager) return { ...EMPTY_SECURE_KEYS };
 
   try {
     const result: SecureApiKeys = {
@@ -116,7 +146,33 @@ export function readSecureApiKeys(): SecureApiKeys {
     }
     return result;
   } catch (_) {
-    return { available: false, deepseekApiKey: '', geminiApiKey: '' };
+    return { ...EMPTY_SECURE_KEYS };
+  }
+}
+
+/**
+ * Async counterpart used by current Zotero builds. Password storage is loaded
+ * asynchronously in Gecko 128+, so settings writes must await this path.
+ */
+export async function readSecureApiKeysAsync(): Promise<SecureApiKeys> {
+  const manager = getLoginManager();
+  if (!manager) return { ...EMPTY_SECURE_KEYS };
+
+  try {
+    const result: SecureApiKeys = {
+      available: true,
+      deepseekApiKey: '',
+      geminiApiKey: '',
+    };
+    for (const login of await findLoginsAsync(manager)) {
+      const provider = providerFromUsername(login?.username);
+      if (!provider || typeof login?.password !== 'string') continue;
+      if (provider === 'deepseek') result.deepseekApiKey = login.password.trim();
+      if (provider === 'gemini') result.geminiApiKey = login.password.trim();
+    }
+    return result;
+  } catch (_) {
+    return { ...EMPTY_SECURE_KEYS };
   }
 }
 
@@ -145,6 +201,47 @@ export function writeSecureApiKeys(keys: Pick<SecureApiKeys, 'deepseekApiKey' | 
       if (!login) return false;
       manager.addLogin(login);
     }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Replace provider credentials using the async LoginManager API in Zotero 7+. */
+export async function writeSecureApiKeysAsync(
+  keys: Pick<SecureApiKeys, 'deepseekApiKey' | 'geminiApiKey'>
+): Promise<boolean> {
+  const manager = getLoginManager();
+  if (!manager) return false;
+
+  const addLogin = typeof manager.addLoginAsync === 'function'
+    ? manager.addLoginAsync.bind(manager)
+    : typeof manager.addLogin === 'function'
+      ? manager.addLogin.bind(manager)
+      : null;
+  const removeLogin = typeof manager.removeLoginAsync === 'function'
+    ? manager.removeLoginAsync.bind(manager)
+    : typeof manager.removeLogin === 'function'
+      ? manager.removeLogin.bind(manager)
+      : null;
+  if (!addLogin || !removeLogin) return false;
+
+  try {
+    // Construct all entries before removing the old ones. A bad XPCOM
+    // constructor must not erase the credentials that were already stored.
+    const newLogins: any[] = [];
+    for (const provider of ['deepseek', 'gemini'] as const) {
+      const key = String(keys[`${provider}ApiKey`] || '').trim();
+      if (!key) continue;
+      const login = getLoginInfo(LOGIN_ORIGIN, LOGIN_REALM, usernameFor(provider), key);
+      if (!login) return false;
+      newLogins.push(login);
+    }
+
+    for (const login of await findLoginsAsync(manager)) {
+      if (providerFromUsername(login?.username)) await removeLogin(login);
+    }
+    for (const login of newLogins) await addLogin(login);
     return true;
   } catch (_) {
     return false;

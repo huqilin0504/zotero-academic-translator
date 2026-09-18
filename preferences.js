@@ -108,15 +108,15 @@
     return config;
   }
 
-  function writeConfig(config) {
+  async function writeConfig(config) {
     const deepseekApiKey = String(config.deepseekApiKey || '').trim();
     const geminiApiKey = String(config.geminiApiKey || '').trim();
     const runtime = Zotero.GeminiTranslatorRuntime;
     if (deepseekApiKey || geminiApiKey) {
-      if (typeof runtime?.setApiKeys !== 'function' || !runtime.setApiKeys({ deepseekApiKey, geminiApiKey })) {
+      if (typeof runtime?.setApiKeys !== 'function' || !(await runtime.setApiKeys({ deepseekApiKey, geminiApiKey }))) {
         throw new Error('安全密钥存储不可用，未保存 API Key');
       }
-    } else if (typeof runtime?.setApiKeys === 'function' && !runtime.setApiKeys({ deepseekApiKey: '', geminiApiKey: '' })) {
+    } else if (typeof runtime?.setApiKeys === 'function' && !(await runtime.setApiKeys({ deepseekApiKey: '', geminiApiKey: '' }))) {
       throw new Error('安全密钥存储不可用，未清理 API Key');
     }
     // prefs.js 只保存非敏感配置；即使设置页桥接尚未就绪，也不把新输入的
@@ -409,10 +409,10 @@
     }, 2200);
   }
 
-  function save() {
+  async function save() {
     try {
       const nextConfig = collectConfig();
-      writeConfig(nextConfig);
+      await writeConfig(nextConfig);
       // 设置页与后台插件脚本共享 Zotero 全局对象；保存后立即同步 Agy
       // 常驻会话，避免必须重启 Zotero 或第一次划词时才启动。
       try {
@@ -422,7 +422,11 @@
       }
       showStatus('已保存');
     } catch (err) {
-      showStatus('保存失败');
+      showStatus(err?.message === '安全密钥存储不可用，未保存 API Key'
+        ? '保存失败：API Key 未写入'
+        : err?.message === '安全密钥存储不可用，未清理 API Key'
+          ? '保存失败：安全存储不可用'
+          : '保存失败');
       Zotero.debug?.('[Gemini Translator] 设置页保存首选项失败: ' + (err.message || err));
     }
   }
@@ -464,7 +468,9 @@
       element('gemini-translator-model')?.addEventListener('change', function () {
         setCustomModelVisibility(this.value === '__custom__');
       });
-      element('gemini-translator-save')?.addEventListener('command', save);
+      element('gemini-translator-save')?.addEventListener('command', function () {
+        void save();
+      });
       element('gemini-translator-check-env')?.addEventListener('command', checkEnvironment);
       element('gemini-translator-reset')?.addEventListener('command', reset);
     },

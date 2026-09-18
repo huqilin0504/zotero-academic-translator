@@ -11,7 +11,7 @@ import { documentTranslationManager } from './docTranslateTasks';
 import { destroyDocumentTaskStatusBar, ensureDocumentTaskStatusBar } from './docTranslateStatus';
 import { ImageAttachment } from './types';
 import { readPersistentJson, writePersistentJson } from './persistentStore';
-import { readSecureApiKeys, writeSecureApiKeys } from './secretStore';
+import { readSecureApiKeys, readSecureApiKeysAsync, writeSecureApiKeysAsync } from './secretStore';
 import { fetchProviderModels, ModelCatalogRequest } from './modelCatalog';
 
 let listenerID: string | null = null;
@@ -126,7 +126,8 @@ function exposeRuntimeBridge(): void {
         syncAgySession(config);
       },
       getApiKeys: () => readSecureApiKeys(),
-      setApiKeys: (keys: { deepseekApiKey?: string; geminiApiKey?: string }) => writeSecureApiKeys({
+      getApiKeysAsync: async () => readSecureApiKeysAsync(),
+      setApiKeys: async (keys: { deepseekApiKey?: string; geminiApiKey?: string }) => writeSecureApiKeysAsync({
         deepseekApiKey: String(keys?.deepseekApiKey || '').trim(),
         geminiApiKey: String(keys?.geminiApiKey || '').trim(),
       }),

@@ -143,6 +143,11 @@
   var LOGIN_ORIGIN = "chrome://zotero-academic-translator";
   var LOGIN_REALM = "Zotero Academic Translator API Key";
   var LOGIN_USERNAME_PREFIX = "provider:";
+  var EMPTY_SECURE_KEYS = {
+    available: false,
+    deepseekApiKey: "",
+    geminiApiKey: ""
+  };
   function getLoginManager() {
     const globals = globalThis;
     const chromeUtils = globals.ChromeUtils;
@@ -162,13 +167,14 @@
       }
     } catch (_) {
     }
-    return globals.Services?.logins || null;
+    const services = globals.Services || (typeof Services !== "undefined" ? Services : null);
+    return services?.logins || null;
   }
   function getLoginInfo(origin, realm, username, password) {
     const globals = globalThis;
     const components = globals.Components;
-    const classes = components?.classes || globals.Cc;
-    const interfaces = components?.interfaces || globals.Ci;
+    const classes = components?.classes || globals.Cc || (typeof Cc !== "undefined" ? Cc : null);
+    const interfaces = components?.interfaces || globals.Ci || (typeof Ci !== "undefined" ? Ci : null);
     const factory = classes?.["@mozilla.org/login-manager/loginInfo;1"];
     try {
       const info = factory?.createInstance?.(interfaces?.nsILoginInfo);
@@ -200,9 +206,7 @@
     if (username === usernameFor("gemini")) return "gemini";
     return null;
   }
-  function findLogins(manager) {
-    if (typeof manager?.findLogins !== "function") return [];
-    const logins = manager.findLogins({}, LOGIN_ORIGIN, null, LOGIN_REALM);
+  function toLoginArray(logins) {
     if (Array.isArray(logins)) return logins;
     try {
       return logins && typeof logins.length === "number" ? Array.from(logins) : [];
@@ -210,11 +214,24 @@
       return [];
     }
   }
+  function findLogins(manager) {
+    if (typeof manager?.findLogins !== "function") return [];
+    const logins = !manager.searchLoginsAsync && manager.findLogins.length >= 4 ? manager.findLogins({}, LOGIN_ORIGIN, null, LOGIN_REALM) : manager.findLogins(LOGIN_ORIGIN, null, LOGIN_REALM);
+    return toLoginArray(logins);
+  }
+  async function findLoginsAsync(manager) {
+    if (typeof manager?.searchLoginsAsync === "function") {
+      const logins = await manager.searchLoginsAsync({
+        origin: LOGIN_ORIGIN,
+        httpRealm: LOGIN_REALM
+      });
+      return toLoginArray(logins);
+    }
+    return findLogins(manager);
+  }
   function readSecureApiKeys() {
     const manager = getLoginManager();
-    if (!manager) {
-      return { available: false, deepseekApiKey: "", geminiApiKey: "" };
-    }
+    if (!manager) return { ...EMPTY_SECURE_KEYS };
     try {
       const result = {
         available: true,
@@ -229,7 +246,27 @@
       }
       return result;
     } catch (_) {
-      return { available: false, deepseekApiKey: "", geminiApiKey: "" };
+      return { ...EMPTY_SECURE_KEYS };
+    }
+  }
+  async function readSecureApiKeysAsync() {
+    const manager = getLoginManager();
+    if (!manager) return { ...EMPTY_SECURE_KEYS };
+    try {
+      const result = {
+        available: true,
+        deepseekApiKey: "",
+        geminiApiKey: ""
+      };
+      for (const login of await findLoginsAsync(manager)) {
+        const provider = providerFromUsername(login?.username);
+        if (!provider || typeof login?.password !== "string") continue;
+        if (provider === "deepseek") result.deepseekApiKey = login.password.trim();
+        if (provider === "gemini") result.geminiApiKey = login.password.trim();
+      }
+      return result;
+    } catch (_) {
+      return { ...EMPTY_SECURE_KEYS };
     }
   }
   function writeSecureApiKeys(keys) {
@@ -254,6 +291,30 @@
         if (!login) return false;
         manager.addLogin(login);
       }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+  async function writeSecureApiKeysAsync(keys) {
+    const manager = getLoginManager();
+    if (!manager) return false;
+    const addLogin = typeof manager.addLoginAsync === "function" ? manager.addLoginAsync.bind(manager) : typeof manager.addLogin === "function" ? manager.addLogin.bind(manager) : null;
+    const removeLogin = typeof manager.removeLoginAsync === "function" ? manager.removeLoginAsync.bind(manager) : typeof manager.removeLogin === "function" ? manager.removeLogin.bind(manager) : null;
+    if (!addLogin || !removeLogin) return false;
+    try {
+      const newLogins = [];
+      for (const provider of ["deepseek", "gemini"]) {
+        const key = String(keys[`${provider}ApiKey`] || "").trim();
+        if (!key) continue;
+        const login = getLoginInfo(LOGIN_ORIGIN, LOGIN_REALM, usernameFor(provider), key);
+        if (!login) return false;
+        newLogins.push(login);
+      }
+      for (const login of await findLoginsAsync(manager)) {
+        if (providerFromUsername(login?.username)) await removeLogin(login);
+      }
+      for (const login of newLogins) await addLogin(login);
       return true;
     } catch (_) {
       return false;
@@ -22560,7 +22621,8 @@ if __name__ == "__main__":
           syncAgySession(config);
         },
         getApiKeys: () => readSecureApiKeys(),
-        setApiKeys: (keys) => writeSecureApiKeys({
+        getApiKeysAsync: async () => readSecureApiKeysAsync(),
+        setApiKeys: async (keys) => writeSecureApiKeysAsync({
           deepseekApiKey: String(keys?.deepseekApiKey || "").trim(),
           geminiApiKey: String(keys?.geminiApiKey || "").trim()
         }),
