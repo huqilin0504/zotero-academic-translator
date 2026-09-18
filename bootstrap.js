@@ -16025,10 +16025,17 @@ ${text2}`;
       if (list) {
         const ordered = list.ordered;
         const items = [];
+        const firstNumber = list.number;
+        let nextNumber = firstNumber || 1;
         while (index < lines.length) {
           const item = matchListItem(lines[index]);
           if (item && item.ordered === ordered) {
+            if (ordered && items.length > 0) {
+              const itemNumber = item.number || nextNumber;
+              if (itemNumber !== nextNumber && itemNumber !== 1) break;
+            }
             items.push(item.content);
+            if (ordered) nextNumber = (item.number || nextNumber) + 1;
             index += 1;
             continue;
           }
@@ -16038,10 +16045,23 @@ ${lines[index].trim()}`;
             index += 1;
             continue;
           }
+          if (items.length > 0 && !lines[index].trim()) {
+            let lookahead = index;
+            while (lookahead < lines.length && !lines[lookahead].trim()) lookahead += 1;
+            const nextItem = lookahead < lines.length ? matchListItem(lines[lookahead]) : null;
+            const isContinuation = Boolean(
+              nextItem && nextItem.ordered === ordered && (!ordered || nextItem.number === nextNumber || nextItem.number === 1)
+            );
+            if (isContinuation) {
+              index = lookahead;
+              continue;
+            }
+          }
           break;
         }
         const tag = ordered ? "ol" : "ul";
-        blocks.push(`<${tag}>${items.map((item) => `<li>${renderInline(item, enableKaTeX)}</li>`).join("")}</${tag}>`);
+        const startAttr = ordered && firstNumber && firstNumber !== 1 ? ` start="${firstNumber}"` : "";
+        blocks.push(`<${tag}${startAttr}>${items.map((item) => `<li>${renderInline(item, enableKaTeX)}</li>`).join("")}</${tag}>`);
         continue;
       }
       const paragraphLines = [];
@@ -16116,8 +16136,8 @@ ${lines[index].trim()}`;
     return result;
   }
   function matchListItem(line) {
-    const ordered = line.match(/^\s{0,3}\d+[.)]\s+(.+)$/);
-    if (ordered) return { ordered: true, content: ordered[1] };
+    const ordered = line.match(/^\s{0,3}(\d+)[.)]\s+(.+)$/);
+    if (ordered) return { ordered: true, content: ordered[2], number: Number(ordered[1]) || 1 };
     const unordered = line.match(/^\s{0,3}[-+*]\s+(.+)$/);
     if (unordered) return { ordered: false, content: unordered[1] };
     return null;
@@ -16726,6 +16746,15 @@ ${lines[index].trim()}`;
   }
 
   // src/assistantSidebar.ts
+  function formatAssistantConversationForCopy(turns) {
+    return turns.map((turn) => {
+      const question = String(turn.question || "").trim();
+      const answer = String(turn.answer || "").trim();
+      if (!question && !answer) return "";
+      return `\u4F60\uFF1A${question || "\uFF08\u56FE\u7247\u63D0\u95EE\uFF09"}
+AI\uFF1A${answer}`;
+    }).filter(Boolean).join("\n\n");
+  }
   var ASSISTANT_SIDEBAR_DEFAULT_WIDTH = 370;
   var ASSISTANT_SIDEBAR_MIN_WIDTH = 300;
   var ASSISTANT_SIDEBAR_MAX_WIDTH = 560;
@@ -16736,6 +16765,24 @@ ${lines[index].trim()}`;
   var ASSISTANT_CONVERSATION_MAX_HEIGHT = 720;
   var MAX_CONVERSATION_HISTORY_TURNS = 6;
   var MAX_CONVERSATION_FIELD_LENGTH = 1200;
+  var ASSISTANT_SVG_NS = "http://www.w3.org/2000/svg";
+  function createAssistantSvgIcon(doc, className, viewBox, pathData) {
+    const svg = doc.createElementNS(ASSISTANT_SVG_NS, "svg");
+    svg.setAttribute("class", className);
+    svg.setAttribute("viewBox", viewBox);
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    const path2 = doc.createElementNS(ASSISTANT_SVG_NS, "path");
+    path2.setAttribute("d", pathData);
+    path2.setAttribute("fill", "none");
+    path2.setAttribute("stroke", "currentColor");
+    path2.setAttribute("stroke-width", "1.5");
+    path2.setAttribute("stroke-linecap", "round");
+    path2.setAttribute("stroke-linejoin", "round");
+    svg.appendChild(path2);
+    return svg;
+  }
   function getAssistantSidebarWidthLimits(viewportWidth) {
     const availableWidth = Math.max(0, Math.floor(Number.isFinite(viewportWidth) ? viewportWidth : 0) - 16);
     return {
@@ -17012,7 +17059,13 @@ ${lines[index].trim()}`;
       action.type = "button";
       action.className = "gemini-assistant-quick-action";
       action.dataset.prompt = prompt;
-      action.textContent = prompt;
+      action.appendChild(createAssistantSvgIcon(
+        doc,
+        "gemini-assistant-quick-icon",
+        "0 0 16 16",
+        "M2.5 3.5v2A4.5 4.5 0 0 0 7 10h5.5m-3-3 3 3-3 3"
+      ));
+      action.appendChild(doc.createTextNode(prompt));
       action.title = `\u63D0\u95EE\uFF1A${prompt}`;
       emptySuggestions.appendChild(action);
     }
@@ -17079,7 +17132,12 @@ ${lines[index].trim()}`;
     const sendButton = doc.createElement("button");
     sendButton.type = "submit";
     sendButton.className = "gemini-assistant-send";
-    sendButton.textContent = "\u2191";
+    sendButton.appendChild(createAssistantSvgIcon(
+      doc,
+      "gemini-assistant-send-icon",
+      "0 0 24 24",
+      "M12 19V5m0 0-6 6m6-6 6 6"
+    ));
     sendButton.title = "\u53D1\u9001\uFF08Ctrl+Enter\uFF09";
     sendButton.setAttribute("aria-label", "\u53D1\u9001");
     const inputHint = doc.createElement("div");
@@ -17296,6 +17354,13 @@ ${lines[index].trim()}`;
     };
     const scrollConversationToBottom = () => {
       resultContent.scrollTop = resultContent.scrollHeight;
+    };
+    const getConversationCopyText = () => {
+      const turns = conversationHistory.slice();
+      if (activeTurn && !activeTurn.finalized && (activeTurn.question || completedAnswer)) {
+        turns.push({ question: activeTurn.question, answer: completedAnswer });
+      }
+      return formatAssistantConversationForCopy(turns);
     };
     const createConversationTurn = (question) => {
       const turn = doc.createElement("article");
@@ -17568,21 +17633,22 @@ ${lines[index].trim()}`;
     const copy = doc.createElement("button");
     copy.type = "button";
     copy.className = "gemini-assistant-copy";
-    copy.textContent = "\u590D\u5236";
-    copy.title = "\u590D\u5236\u56DE\u7B54";
+    copy.textContent = "\u590D\u5236\u5BF9\u8BDD";
+    copy.title = "\u590D\u5236\u5B8C\u6574\u5BF9\u8BDD";
     copy.addEventListener("click", async (event) => {
       event.stopPropagation();
-      if (!completedAnswer) return;
+      const conversationText = getConversationCopyText();
+      if (!conversationText) return;
       try {
-        await copyTextToClipboard(doc, completedAnswer);
+        await copyTextToClipboard(doc, conversationText);
         copy.textContent = "\u5DF2\u590D\u5236";
         setTimeout(() => {
-          copy.textContent = "\u590D\u5236";
+          copy.textContent = "\u590D\u5236\u5BF9\u8BDD";
         }, 1200);
       } catch (_) {
         copy.textContent = "\u5931\u8D25";
         setTimeout(() => {
-          copy.textContent = "\u590D\u5236";
+          copy.textContent = "\u590D\u5236\u5BF9\u8BDD";
         }, 1200);
       }
     });
@@ -19774,7 +19840,9 @@ ${lines[index].trim()}`;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 10px 12px 14px;
 }
 
@@ -19913,8 +19981,10 @@ ${lines[index].trim()}`;
 
 .gemini-assistant-conversation {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   min-height: 150px;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -19963,10 +20033,11 @@ ${lines[index].trim()}`;
 }
 
 .gemini-assistant-result-content {
+  flex: 1 1 auto;
   min-height: 20px;
-  max-height: none;
+  min-width: 0;
   margin-top: 4px;
-  overflow: visible;
+  overflow: hidden;
   color: var(--zotero-popover-text);
   overflow-wrap: anywhere;
 }
@@ -19978,6 +20049,8 @@ ${lines[index].trim()}`;
   gap: 14px;
   padding-right: 4px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   scrollbar-gutter: stable;
 }
 
@@ -20365,9 +20438,11 @@ ${lines[index].trim()}`;
 }
 
 .gemini-assistant-quick-action {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-height: 34px;
-  padding: 6px 8px 6px 25px;
+  padding: 6px 8px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -20379,14 +20454,18 @@ ${lines[index].trim()}`;
   text-align: left;
 }
 
-.gemini-assistant-quick-action::before {
-  position: absolute;
-  top: 7px;
-  left: 1px;
-  content: '\u21AA';
+.gemini-assistant-quick-icon {
+  display: block;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
   color: var(--zotero-popover-muted);
-  font-size: 16px;
-  line-height: 1;
+  overflow: visible;
+}
+
+.gemini-assistant-quick-action:hover .gemini-assistant-quick-icon,
+.gemini-assistant-quick-action:focus-visible .gemini-assistant-quick-icon {
+  color: var(--zotero-popover-text);
 }
 
 .gemini-assistant-quick-action:hover,
@@ -20490,6 +20569,14 @@ ${lines[index].trim()}`;
   font-size: 20px;
   font-weight: 400;
   line-height: 31px;
+}
+
+.gemini-assistant-send-icon {
+  display: block;
+  width: 17px;
+  height: 17px;
+  margin: 0 auto;
+  overflow: visible;
 }
 
 .gemini-assistant-send:hover {

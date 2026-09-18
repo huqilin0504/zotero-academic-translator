@@ -116,10 +116,19 @@ export function renderMarkdownToHtml(text: string, enableKaTeX = true): string {
     if (list) {
       const ordered = list.ordered;
       const items: string[] = [];
+      const firstNumber = list.number;
+      let nextNumber = firstNumber || 1;
       while (index < lines.length) {
         const item = matchListItem(lines[index]);
         if (item && item.ordered === ordered) {
+          if (ordered && items.length > 0) {
+            const itemNumber = item.number || nextNumber;
+            // 模型有时会在空行后把同一组编号重新写成 1；只要没有跳号，
+            // 仍按同一个列表合并，避免浏览器把下一段重新显示为“1.”。
+            if (itemNumber !== nextNumber && itemNumber !== 1) break;
+          }
           items.push(item.content);
+          if (ordered) nextNumber = (item.number || nextNumber) + 1;
           index += 1;
           continue;
         }
@@ -128,10 +137,25 @@ export function renderMarkdownToHtml(text: string, enableKaTeX = true): string {
           index += 1;
           continue;
         }
+        if (items.length > 0 && !lines[index].trim()) {
+          let lookahead = index;
+          while (lookahead < lines.length && !lines[lookahead].trim()) lookahead += 1;
+          const nextItem = lookahead < lines.length ? matchListItem(lines[lookahead]) : null;
+          const isContinuation = Boolean(
+            nextItem &&
+            nextItem.ordered === ordered &&
+            (!ordered || nextItem.number === nextNumber || nextItem.number === 1)
+          );
+          if (isContinuation) {
+            index = lookahead;
+            continue;
+          }
+        }
         break;
       }
       const tag = ordered ? 'ol' : 'ul';
-      blocks.push(`<${tag}>${items.map((item) => `<li>${renderInline(item, enableKaTeX)}</li>`).join('')}</${tag}>`);
+      const startAttr = ordered && firstNumber && firstNumber !== 1 ? ` start="${firstNumber}"` : '';
+      blocks.push(`<${tag}${startAttr}>${items.map((item) => `<li>${renderInline(item, enableKaTeX)}</li>`).join('')}</${tag}>`);
       continue;
     }
 
@@ -228,9 +252,9 @@ function extractMath(source: string, tokens: TokenStore): string {
   return result;
 }
 
-function matchListItem(line: string): { ordered: boolean; content: string } | null {
-  const ordered = line.match(/^\s{0,3}\d+[.)]\s+(.+)$/);
-  if (ordered) return { ordered: true, content: ordered[1] };
+function matchListItem(line: string): { ordered: boolean; content: string; number?: number } | null {
+  const ordered = line.match(/^\s{0,3}(\d+)[.)]\s+(.+)$/);
+  if (ordered) return { ordered: true, content: ordered[2], number: Number(ordered[1]) || 1 };
   const unordered = line.match(/^\s{0,3}[-+*]\s+(.+)$/);
   if (unordered) return { ordered: false, content: unordered[1] };
   return null;

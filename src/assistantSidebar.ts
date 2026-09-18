@@ -19,6 +19,18 @@ export interface AssistantConversationTurn {
   answer: string;
 }
 
+export function formatAssistantConversationForCopy(turns: AssistantConversationTurn[]): string {
+  return turns
+    .map((turn) => {
+      const question = String(turn.question || '').trim();
+      const answer = String(turn.answer || '').trim();
+      if (!question && !answer) return '';
+      return `你：${question || '（图片提问）'}\nAI：${answer}`;
+    })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 export interface AssistantSidebarOptions {
   onAsk?: (question: string, images: File[], context: string) => void;
   onOpenChange?: (open: boolean) => void;
@@ -50,6 +62,30 @@ const ASSISTANT_CONVERSATION_DEFAULT_HEIGHT = 360;
 const ASSISTANT_CONVERSATION_MAX_HEIGHT = 720;
 const MAX_CONVERSATION_HISTORY_TURNS = 6;
 const MAX_CONVERSATION_FIELD_LENGTH = 1200;
+const ASSISTANT_SVG_NS = 'http://www.w3.org/2000/svg';
+
+function createAssistantSvgIcon(
+  doc: Document,
+  className: string,
+  viewBox: string,
+  pathData: string
+): Element {
+  const svg = doc.createElementNS(ASSISTANT_SVG_NS, 'svg');
+  svg.setAttribute('class', className);
+  svg.setAttribute('viewBox', viewBox);
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  const path = doc.createElementNS(ASSISTANT_SVG_NS, 'path');
+  path.setAttribute('d', pathData);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.5');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(path);
+  return svg;
+}
 
 export function getAssistantSidebarWidthLimits(viewportWidth: number): { min: number; max: number } {
   const availableWidth = Math.max(0, Math.floor(Number.isFinite(viewportWidth) ? viewportWidth : 0) - 16);
@@ -392,7 +428,13 @@ export function createAssistantSidebar(
     action.type = 'button';
     action.className = 'gemini-assistant-quick-action';
     action.dataset.prompt = prompt;
-    action.textContent = prompt;
+    action.appendChild(createAssistantSvgIcon(
+      doc,
+      'gemini-assistant-quick-icon',
+      '0 0 16 16',
+      'M2.5 3.5v2A4.5 4.5 0 0 0 7 10h5.5m-3-3 3 3-3 3'
+    ));
+    action.appendChild(doc.createTextNode(prompt));
     action.title = `提问：${prompt}`;
     emptySuggestions.appendChild(action);
   }
@@ -461,7 +503,12 @@ export function createAssistantSidebar(
   const sendButton = doc.createElement('button');
   sendButton.type = 'submit';
   sendButton.className = 'gemini-assistant-send';
-  sendButton.textContent = '↑';
+  sendButton.appendChild(createAssistantSvgIcon(
+    doc,
+    'gemini-assistant-send-icon',
+    '0 0 24 24',
+    'M12 19V5m0 0-6 6m6-6 6 6'
+  ));
   sendButton.title = '发送（Ctrl+Enter）';
   sendButton.setAttribute('aria-label', '发送');
   const inputHint = doc.createElement('div');
@@ -693,6 +740,14 @@ export function createAssistantSidebar(
   const scrollConversationToBottom = (): void => {
     // 论文信息和当前选区固定；只有对话列表拥有独立滚动条。
     resultContent.scrollTop = resultContent.scrollHeight;
+  };
+
+  const getConversationCopyText = (): string => {
+    const turns = conversationHistory.slice();
+    if (activeTurn && !activeTurn.finalized && (activeTurn.question || completedAnswer)) {
+      turns.push({ question: activeTurn.question, answer: completedAnswer });
+    }
+    return formatAssistantConversationForCopy(turns);
   };
 
   const createConversationTurn = (question: string): ActiveAssistantTurn => {
@@ -981,18 +1036,19 @@ export function createAssistantSidebar(
   const copy = doc.createElement('button');
   copy.type = 'button';
   copy.className = 'gemini-assistant-copy';
-  copy.textContent = '复制';
-  copy.title = '复制回答';
+  copy.textContent = '复制对话';
+  copy.title = '复制完整对话';
   copy.addEventListener('click', async (event) => {
     event.stopPropagation();
-    if (!completedAnswer) return;
+    const conversationText = getConversationCopyText();
+    if (!conversationText) return;
     try {
-      await copyTextToClipboard(doc, completedAnswer);
+      await copyTextToClipboard(doc, conversationText);
       copy.textContent = '已复制';
-      setTimeout(() => { copy.textContent = '复制'; }, 1200);
+      setTimeout(() => { copy.textContent = '复制对话'; }, 1200);
     } catch (_) {
       copy.textContent = '失败';
-      setTimeout(() => { copy.textContent = '复制'; }, 1200);
+      setTimeout(() => { copy.textContent = '复制对话'; }, 1200);
     }
   });
   resultHeader.appendChild(copy);

@@ -2180,7 +2180,9 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 10px 12px 14px;
 }
 
@@ -2319,8 +2321,10 @@
 
 .gemini-assistant-conversation {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   min-height: 150px;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -2369,10 +2373,11 @@
 }
 
 .gemini-assistant-result-content {
+  flex: 1 1 auto;
   min-height: 20px;
-  max-height: none;
+  min-width: 0;
   margin-top: 4px;
-  overflow: visible;
+  overflow: hidden;
   color: var(--zotero-popover-text);
   overflow-wrap: anywhere;
 }
@@ -2384,6 +2389,8 @@
   gap: 14px;
   padding-right: 4px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   scrollbar-gutter: stable;
 }
 
@@ -2771,9 +2778,11 @@
 }
 
 .gemini-assistant-quick-action {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-height: 34px;
-  padding: 6px 8px 6px 25px;
+  padding: 6px 8px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -2785,14 +2794,18 @@
   text-align: left;
 }
 
-.gemini-assistant-quick-action::before {
-  position: absolute;
-  top: 7px;
-  left: 1px;
-  content: '↪';
+.gemini-assistant-quick-icon {
+  display: block;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
   color: var(--zotero-popover-muted);
-  font-size: 16px;
-  line-height: 1;
+  overflow: visible;
+}
+
+.gemini-assistant-quick-action:hover .gemini-assistant-quick-icon,
+.gemini-assistant-quick-action:focus-visible .gemini-assistant-quick-icon {
+  color: var(--zotero-popover-text);
 }
 
 .gemini-assistant-quick-action:hover,
@@ -2896,6 +2909,14 @@
   font-size: 20px;
   font-weight: 400;
   line-height: 31px;
+}
+
+.gemini-assistant-send-icon {
+  display: block;
+  width: 17px;
+  height: 17px;
+  margin: 0 auto;
+  overflow: visible;
 }
 
 .gemini-assistant-send:hover {

@@ -5,6 +5,7 @@ import {
   ASSISTANT_SIDEBAR_MIN_WIDTH,
   clampAssistantSidebarWidth,
   buildAssistantContext,
+  formatAssistantConversationForCopy,
   shouldSubmitAssistantInput,
 } from '../src/assistantSidebar';
 
@@ -49,6 +50,17 @@ test('assistant sidebar: Enter inserts a newline and Ctrl/Meta+Enter submits', (
   assert.equal(shouldSubmitAssistantInput({ key: 'Enter', ctrlKey: true }), true);
   assert.equal(shouldSubmitAssistantInput({ key: 'Enter', metaKey: true }), true);
   assert.equal(shouldSubmitAssistantInput({ key: 'a', ctrlKey: true }), false);
+});
+
+test('assistant sidebar: copy action preserves the full conversation order', () => {
+  assert.equal(
+    formatAssistantConversationForCopy([
+      { question: '问题一', answer: '回答一' },
+      { question: '问题二', answer: '回答二' },
+    ]),
+    '你：问题一\nAI：回答一\n\n你：问题二\nAI：回答二'
+  );
+  assert.equal(formatAssistantConversationForCopy([{ question: '', answer: '图像回答' }]), '你：（图片提问）\nAI：图像回答');
 });
 
 test('assistant sidebar: oversized abstract and selection are bounded', () => {

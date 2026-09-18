@@ -11,6 +11,19 @@ test('markdownRenderer: 标题、粗体、列表和行内代码保留结构', ()
   assert.match(html, /<ol><li>第一项<\/li><li>第二项<\/li><\/ol>/);
 });
 
+test('markdownRenderer: 空行分隔的连续有序列表不会重复从 1 开始', () => {
+  const html = renderMarkdownToHtml('1. 第一项\n\n1. 第二项\n\n1. 第三项');
+
+  assert.equal((html.match(/<ol/g) || []).length, 1);
+  assert.match(html, /<ol><li>第一项<\/li><li>第二项<\/li><li>第三项<\/li><\/ol>/);
+});
+
+test('markdownRenderer: 明确的有序列表起始编号会保留', () => {
+  const html = renderMarkdownToHtml('3. 第三项\n4. 第四项');
+
+  assert.match(html, /<ol start="3"><li>第三项<\/li><li>第四项<\/li><\/ol>/);
+});
+
 test('markdownRenderer: 代码块、表格和公式可以同时渲染', () => {
   const html = renderMarkdownToHtml(
     '```python\nprint("ok")\n```\n\n| 项目 | 结果 |\n| --- | :---: |\n| $x$ | **通过** |'
