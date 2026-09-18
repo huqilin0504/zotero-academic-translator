@@ -139,6 +139,127 @@
     docAutoOpen: true
   };
 
+  // src/secretStore.ts
+  var LOGIN_ORIGIN = "chrome://zotero-academic-translator";
+  var LOGIN_REALM = "Zotero Academic Translator API Key";
+  var LOGIN_USERNAME_PREFIX = "provider:";
+  function getLoginManager() {
+    const globals = globalThis;
+    const chromeUtils = globals.ChromeUtils;
+    try {
+      if (typeof chromeUtils?.importESModule === "function") {
+        const servicesModule = chromeUtils.importESModule("resource://gre/modules/Services.sys.mjs");
+        const manager = servicesModule?.Services?.logins || servicesModule?.logins;
+        if (manager) return manager;
+      }
+    } catch (_) {
+    }
+    try {
+      if (typeof chromeUtils?.import === "function") {
+        const servicesModule = chromeUtils.import("resource://gre/modules/Services.jsm");
+        const manager = servicesModule?.Services?.logins || servicesModule?.logins;
+        if (manager) return manager;
+      }
+    } catch (_) {
+    }
+    return globals.Services?.logins || null;
+  }
+  function getLoginInfo(origin, realm, username, password) {
+    const globals = globalThis;
+    const components = globals.Components;
+    const classes = components?.classes || globals.Cc;
+    const interfaces = components?.interfaces || globals.Ci;
+    const factory = classes?.["@mozilla.org/login-manager/loginInfo;1"];
+    try {
+      const info = factory?.createInstance?.(interfaces?.nsILoginInfo);
+      if (info?.init) {
+        info.init(origin, null, realm, username, password, "", "");
+        return info;
+      }
+    } catch (_) {
+    }
+    try {
+      const Constructor = components?.Constructor;
+      if (typeof Constructor === "function") {
+        const LoginInfo = Constructor(
+          "@mozilla.org/login-manager/loginInfo;1",
+          "nsILoginInfo",
+          "init"
+        );
+        return new LoginInfo(origin, null, realm, username, password, "", "");
+      }
+    } catch (_) {
+    }
+    return null;
+  }
+  function usernameFor(provider) {
+    return `${LOGIN_USERNAME_PREFIX}${provider}`;
+  }
+  function providerFromUsername(username) {
+    if (username === usernameFor("deepseek")) return "deepseek";
+    if (username === usernameFor("gemini")) return "gemini";
+    return null;
+  }
+  function findLogins(manager) {
+    if (typeof manager?.findLogins !== "function") return [];
+    const logins = manager.findLogins({}, LOGIN_ORIGIN, null, LOGIN_REALM);
+    if (Array.isArray(logins)) return logins;
+    try {
+      return logins && typeof logins.length === "number" ? Array.from(logins) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  function readSecureApiKeys() {
+    const manager = getLoginManager();
+    if (!manager) {
+      return { available: false, deepseekApiKey: "", geminiApiKey: "" };
+    }
+    try {
+      const result = {
+        available: true,
+        deepseekApiKey: "",
+        geminiApiKey: ""
+      };
+      for (const login of findLogins(manager)) {
+        const provider = providerFromUsername(login?.username);
+        if (!provider || typeof login?.password !== "string") continue;
+        if (provider === "deepseek") result.deepseekApiKey = login.password.trim();
+        if (provider === "gemini") result.geminiApiKey = login.password.trim();
+      }
+      return result;
+    } catch (_) {
+      return { available: false, deepseekApiKey: "", geminiApiKey: "" };
+    }
+  }
+  function writeSecureApiKeys(keys) {
+    const manager = getLoginManager();
+    if (!manager || typeof manager.addLogin !== "function" || typeof manager.removeLogin !== "function") {
+      return false;
+    }
+    try {
+      const logins = findLogins(manager);
+      for (const login of logins) {
+        if (providerFromUsername(login?.username)) manager.removeLogin(login);
+      }
+      for (const provider of ["deepseek", "gemini"]) {
+        const key = String(keys[`${provider}ApiKey`] || "").trim();
+        if (!key) continue;
+        const login = getLoginInfo(
+          LOGIN_ORIGIN,
+          LOGIN_REALM,
+          usernameFor(provider),
+          key
+        );
+        if (!login) return false;
+        manager.addLogin(login);
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // src/config.ts
   var DEEPSEEK_API_BASE_URL = defaults_default.apiBaseUrl;
   var DEEPSEEK_MODEL = defaults_default.model;
@@ -147,9 +268,45 @@
   var DEFAULT_CONFIG = { ...defaults_default };
   var currentConfig = { ...DEFAULT_CONFIG };
   var PREF_PREFIX = "extensions.gemini-translator.";
+  function stripApiKeysForStorage(config) {
+    return {
+      ...config,
+      apiKey: "",
+      deepseekApiKey: "",
+      geminiApiKey: ""
+    };
+  }
+  function activeApiKey(config) {
+    return config.endpointType === "deepseek" ? String(config.deepseekApiKey || "").trim() : config.endpointType === "gemini" ? String(config.geminiApiKey || "").trim() : "";
+  }
+  function secureConfigFromStoredSecrets(config) {
+    const secure = readSecureApiKeys();
+    if (!secure.available) return { config, available: false, migrated: false };
+    const legacyDeepSeek = String(config.deepseekApiKey || "").trim();
+    const legacyGemini = String(config.geminiApiKey || "").trim();
+    const deepseekApiKey = secure.deepseekApiKey || legacyDeepSeek;
+    const geminiApiKey = secure.geminiApiKey || legacyGemini;
+    const migrated = !secure.deepseekApiKey && !secure.geminiApiKey && Boolean(legacyDeepSeek || legacyGemini);
+    if ((legacyDeepSeek || legacyGemini) && !writeSecureApiKeys({ deepseekApiKey, geminiApiKey })) {
+      return { config, available: false, migrated: false };
+    }
+    const hydrated = {
+      ...config,
+      deepseekApiKey,
+      geminiApiKey
+    };
+    hydrated.apiKey = activeApiKey(hydrated);
+    return { config: hydrated, available: true, migrated };
+  }
+  function persistConfig(config, secureAvailable) {
+    if (typeof Zotero === "undefined" || !Zotero.Prefs) return;
+    const value = secureAvailable ? stripApiKeysForStorage(config) : config;
+    Zotero.Prefs.set(`${PREF_PREFIX}config`, JSON.stringify(value));
+  }
   function normalizeConfig(config = {}) {
     const merged = { ...DEFAULT_CONFIG, ...config };
-    const legacyApiKey = String(config.apiKey ?? "").trim();
+    const hasProviderKeyFields = Object.prototype.hasOwnProperty.call(config, "deepseekApiKey") || Object.prototype.hasOwnProperty.call(config, "geminiApiKey");
+    const legacyApiKey = hasProviderKeyFields ? "" : String(config.apiKey ?? "").trim();
     const deepseekApiKey = String(merged.deepseekApiKey || "").trim() || (merged.endpointType === "deepseek" ? legacyApiKey : "");
     const geminiApiKey = String(merged.geminiApiKey || "").trim() || (merged.endpointType === "gemini" ? legacyApiKey : "");
     merged.deepseekApiKey = deepseekApiKey;
@@ -164,20 +321,25 @@
     return merged;
   }
   function getApiKeyForEndpoint(config) {
-    if (config.endpointType === "deepseek") return String(config.deepseekApiKey || config.apiKey || "").trim();
-    if (config.endpointType === "gemini") return String(config.geminiApiKey || config.apiKey || "").trim();
+    if (config.endpointType === "deepseek") {
+      return Object.prototype.hasOwnProperty.call(config, "deepseekApiKey") ? String(config.deepseekApiKey || "").trim() : String(config.apiKey || "").trim();
+    }
+    if (config.endpointType === "gemini") {
+      return Object.prototype.hasOwnProperty.call(config, "geminiApiKey") ? String(config.geminiApiKey || "").trim() : String(config.apiKey || "").trim();
+    }
     return "";
   }
   function loadConfig() {
     if (typeof Zotero !== "undefined" && Zotero.Prefs) {
       try {
         const raw = Zotero.Prefs.get(`${PREF_PREFIX}config`);
-        if (typeof raw === "string" && raw) {
-          const parsed = JSON.parse(raw);
-          currentConfig = normalizeConfig(parsed);
-          if (JSON.stringify(parsed) !== JSON.stringify(currentConfig)) {
-            Zotero.Prefs.set(`${PREF_PREFIX}config`, JSON.stringify(currentConfig));
-          }
+        const parsed = typeof raw === "string" && raw ? JSON.parse(raw) : {};
+        const normalized = normalizeConfig(parsed);
+        const secureResult = secureConfigFromStoredSecrets(normalized);
+        currentConfig = secureResult.config;
+        const storedConfig = secureResult.available ? stripApiKeysForStorage(currentConfig) : currentConfig;
+        if (JSON.stringify(parsed) !== JSON.stringify(storedConfig)) {
+          persistConfig(currentConfig, secureResult.available);
         }
       } catch (e) {
         Zotero.debug?.(`[Gemini Translator] \u52A0\u8F7D\u9996\u9009\u9879\u5931\u8D25\uFF0C\u4F7F\u7528\u9ED8\u8BA4\u914D\u7F6E: ${e}`);
@@ -22273,6 +22435,11 @@ if __name__ == "__main__":
           if (shuttingDown) return;
           syncAgySession(config);
         },
+        getApiKeys: () => readSecureApiKeys(),
+        setApiKeys: (keys) => writeSecureApiKeys({
+          deepseekApiKey: String(keys?.deepseekApiKey || "").trim(),
+          geminiApiKey: String(keys?.geminiApiKey || "").trim()
+        }),
         checkTools: async (config) => ({
           agy: await checkExecutable(config.agyPath || "agy"),
           pdf2zh: await checkExecutable(config.pdf2zhPath || "pdf2zh")

@@ -129,11 +129,12 @@ python3 scripts/patch_pdf2zh_translator.py \
 
 ## 数据与隐私
 
-- API Key、引擎配置、问答历史、翻译缓存和 Agy 会话 ID 存在本机 Zotero 首选项中。
+- DeepSeek/Gemini API Key 使用 Zotero/Gecko 登录管理器保存于当前 Zotero 配置目录的凭据存储中；插件配置、问答历史、翻译缓存和 Agy 会话 ID 保存在本机 Zotero 首选项中。API Key 不应再出现在 `prefs.js`；旧版本明文配置会在启动时尝试迁移。
 - 选中的文字、问题和用户附加的图片会发送给当前选择的服务；服务端的保存策略由相应供应商决定。
 - Agy 只使用插件传入的受限提示和图片路径；插件不会把其他本地路径主动写入提示词。
 - 非 Agy 图片请求会在发送前临时写入 `/tmp/zotero-gemini-translator-images`，请求结束后清理；单张图片上限为 8 MiB。
 - 插件不会把 API Key 写入 Gemini URL 查询参数，而是使用请求头；切换到 Agy、Ollama 等本地端点时不会携带旧的云端 Key。
+- 如果当前运行环境没有可用的 Zotero 登录管理器，设置页会拒绝保存新的云端 API Key，避免为了兼容而重新写入明文配置；请先使用受支持的 Zotero 构建。
 
 ## 工程结构
 

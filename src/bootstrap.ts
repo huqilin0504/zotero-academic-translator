@@ -11,6 +11,7 @@ import { documentTranslationManager } from './docTranslateTasks';
 import { destroyDocumentTaskStatusBar, ensureDocumentTaskStatusBar } from './docTranslateStatus';
 import { ImageAttachment } from './types';
 import { readPersistentJson, writePersistentJson } from './persistentStore';
+import { readSecureApiKeys, writeSecureApiKeys } from './secretStore';
 
 let listenerID: string | null = null;
 let popupHandler: any = null;
@@ -123,6 +124,11 @@ function exposeRuntimeBridge(): void {
         if (shuttingDown) return;
         syncAgySession(config);
       },
+      getApiKeys: () => readSecureApiKeys(),
+      setApiKeys: (keys: { deepseekApiKey?: string; geminiApiKey?: string }) => writeSecureApiKeys({
+        deepseekApiKey: String(keys?.deepseekApiKey || '').trim(),
+        geminiApiKey: String(keys?.geminiApiKey || '').trim(),
+      }),
       checkTools: async (config: ReturnType<typeof loadConfig>) => ({
         agy: await checkExecutable(config.agyPath || 'agy'),
         pdf2zh: await checkExecutable(config.pdf2zhPath || 'pdf2zh'),

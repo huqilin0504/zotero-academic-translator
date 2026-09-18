@@ -7,6 +7,7 @@ import {
   GEMINI_MODEL,
   getApiKeyForEndpoint,
   normalizeConfig,
+  stripApiKeysForStorage,
 } from '../src/config';
 
 test('config: 默认端点为 DeepSeek Flash 而不是本机 Agy', () => {
@@ -55,6 +56,33 @@ test('config: 云端 Key 按供应商隔离，本地端点清空活动 Key', () 
   assert.equal(ollama.apiKey, '');
   assert.equal(getApiKeyForEndpoint(ollama), '');
   assert.equal(ollama.deepseekApiKey, 'deepseek-key');
+});
+
+test('config: 切换供应商时不会把旧 apiKey 当成新供应商密钥', () => {
+  const switched = normalizeConfig({
+    endpointType: 'gemini',
+    apiKey: 'stale-deepseek-key',
+    deepseekApiKey: 'deepseek-key',
+    geminiApiKey: '',
+  });
+  assert.equal(switched.geminiApiKey, '');
+  assert.equal(switched.apiKey, '');
+  assert.equal(getApiKeyForEndpoint(switched), '');
+});
+
+test('config: 写入 prefs 前清除所有 API Key 字段', () => {
+  const config = normalizeConfig({
+    endpointType: 'deepseek',
+    apiKey: 'legacy-key',
+    deepseekApiKey: 'deepseek-key',
+    geminiApiKey: 'gemini-key',
+  });
+  const stored = stripApiKeysForStorage(config);
+  assert.equal(stored.apiKey, '');
+  assert.equal(stored.deepseekApiKey, '');
+  assert.equal(stored.geminiApiKey, '');
+  assert.equal(stored.endpointType, 'deepseek');
+  assert.equal(stored.model, config.model);
 });
 
 test('config: 默认可执行文件使用 PATH 命令名而不是维护者绝对路径', () => {

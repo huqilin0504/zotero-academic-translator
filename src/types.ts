@@ -29,7 +29,7 @@ export interface PluginConfig {
   endpointType: EndpointType;
   /** API 基础请求地址，例如 https://api.deepseek.com、http://127.0.0.1:11434/v1 或 Gemini 地址 */
   apiBaseUrl: string;
-  /** API 密钥，DeepSeek/Gemini 云端直连需要填写 */
+  /** API 密钥，仅在运行时内存配置中使用；持久化由 Zotero 登录管理器负责 */
   apiKey: string;
   /** DeepSeek 专用密钥；切换到本地端点时不会发送 */
   deepseekApiKey?: string;

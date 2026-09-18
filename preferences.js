@@ -10,15 +10,25 @@
   const DEFAULTS = Object.assign({}, SHARED_DEFAULTS);
 
   function providerApiKey(config, endpoint) {
-    if (endpoint === 'deepseek') return String(config.deepseekApiKey || (config.endpointType === 'deepseek' ? config.apiKey : '') || '').trim();
-    if (endpoint === 'gemini') return String(config.geminiApiKey || (config.endpointType === 'gemini' ? config.apiKey : '') || '').trim();
+    if (endpoint === 'deepseek') {
+      return Object.prototype.hasOwnProperty.call(config, 'deepseekApiKey')
+        ? String(config.deepseekApiKey || '').trim()
+        : String(config.endpointType === 'deepseek' ? config.apiKey : '').trim();
+    }
+    if (endpoint === 'gemini') {
+      return Object.prototype.hasOwnProperty.call(config, 'geminiApiKey')
+        ? String(config.geminiApiKey || '').trim()
+        : String(config.endpointType === 'gemini' ? config.apiKey : '').trim();
+    }
     return '';
   }
 
   function normalizeStoredConfig(config) {
     const normalized = Object.assign({}, DEFAULTS, config || {});
     const endpoint = normalized.endpointType === 'openai' ? 'ollama' : normalized.endpointType;
-    const legacyKey = String(config?.apiKey || '').trim();
+    const hasProviderKeyFields = Object.prototype.hasOwnProperty.call(config || {}, 'deepseekApiKey') ||
+      Object.prototype.hasOwnProperty.call(config || {}, 'geminiApiKey');
+    const legacyKey = hasProviderKeyFields ? '' : String(config?.apiKey || '').trim();
     if (!normalized.deepseekApiKey && endpoint === 'deepseek') normalized.deepseekApiKey = legacyKey;
     if (!normalized.geminiApiKey && endpoint === 'gemini') normalized.geminiApiKey = legacyKey;
     normalized.apiKey = providerApiKey(normalized, endpoint);
@@ -79,11 +89,42 @@
     } else if (config.endpointType === 'gemini' && /^(deepseek-|qwen|llama|ollama|gpt-|claude|agy-)/.test(model)) {
       config.model = GEMINI_MODEL;
     }
+    // API Key 不再从 prefs.js 读取。运行时桥接会从 Zotero 的登录管理器
+    // 注入对应供应商的密钥；若插件尚未启动，保留旧字段只用于一次性迁移。
+    try {
+      const secure = Zotero.GeminiTranslatorRuntime?.getApiKeys?.();
+      if (secure?.available) {
+        // 启动迁移尚未完成时仍保留旧字段，随后 writeConfig 会把它移入
+        // 登录管理器；正常安装的 prefs.js 已经是空字段，则结果仍为空。
+        config.deepseekApiKey = String(secure.deepseekApiKey || config.deepseekApiKey || '').trim();
+        config.geminiApiKey = String(secure.geminiApiKey || config.geminiApiKey || '').trim();
+        config.apiKey = providerApiKey(config, config.endpointType);
+      }
+    } catch (err) {
+      Zotero.debug?.('[Gemini Translator] 设置页读取安全密钥失败: ' + (err.message || err));
+    }
     return config;
   }
 
   function writeConfig(config) {
-    Zotero.Prefs.set(PREF_KEY, JSON.stringify(config));
+    const deepseekApiKey = String(config.deepseekApiKey || '').trim();
+    const geminiApiKey = String(config.geminiApiKey || '').trim();
+    const runtime = Zotero.GeminiTranslatorRuntime;
+    if (deepseekApiKey || geminiApiKey) {
+      if (typeof runtime?.setApiKeys !== 'function' || !runtime.setApiKeys({ deepseekApiKey, geminiApiKey })) {
+        throw new Error('安全密钥存储不可用，未保存 API Key');
+      }
+    } else if (typeof runtime?.setApiKeys === 'function' && !runtime.setApiKeys({ deepseekApiKey: '', geminiApiKey: '' })) {
+      throw new Error('安全密钥存储不可用，未清理 API Key');
+    }
+    // prefs.js 只保存非敏感配置；即使设置页桥接尚未就绪，也不把新输入的
+    // Key 写入磁盘。运行时桥接缺失时，上面的有 Key 分支会明确失败。
+    const safeConfig = Object.assign({}, config, {
+      apiKey: '',
+      deepseekApiKey: '',
+      geminiApiKey: '',
+    });
+    Zotero.Prefs.set(PREF_KEY, JSON.stringify(safeConfig));
   }
 
   function setCheckbox(id, value) {
@@ -233,8 +274,12 @@
     populateModelOptions(endpoint, config.model || DEFAULTS.model);
     const keyInput = element('gemini-translator-api-key');
     if (keyInput) {
-      keyInput.dataset.deepseekApiKey = config.deepseekApiKey || (endpoint === 'deepseek' ? config.apiKey : '') || '';
-      keyInput.dataset.geminiApiKey = config.geminiApiKey || (endpoint === 'gemini' ? config.apiKey : '') || '';
+      keyInput.dataset.deepseekApiKey = Object.prototype.hasOwnProperty.call(config, 'deepseekApiKey')
+        ? String(config.deepseekApiKey || '').trim()
+        : (endpoint === 'deepseek' ? String(config.apiKey || '').trim() : '');
+      keyInput.dataset.geminiApiKey = Object.prototype.hasOwnProperty.call(config, 'geminiApiKey')
+        ? String(config.geminiApiKey || '').trim()
+        : (endpoint === 'gemini' ? String(config.apiKey || '').trim() : '');
       keyInput.value = endpoint === 'deepseek'
         ? keyInput.dataset.deepseekApiKey
         : endpoint === 'gemini'
