@@ -16745,6 +16745,39 @@ ${lines[index].trim()}`;
     return controller;
   }
 
+  // src/persistentStore.ts
+  function readPersistentJson(key, fallback, doc) {
+    const zotero = globalThis.Zotero;
+    try {
+      const raw = zotero?.Prefs?.get?.(key);
+      if (typeof raw === "string" && raw) return JSON.parse(raw);
+    } catch (_) {
+    }
+    try {
+      const storage = doc?.defaultView?.localStorage || globalThis.localStorage;
+      const raw = storage?.getItem?.(key);
+      if (typeof raw === "string" && raw) return JSON.parse(raw);
+    } catch (_) {
+    }
+    return fallback;
+  }
+  function writePersistentJson(key, value, doc) {
+    const serialized = JSON.stringify(value);
+    const zotero = globalThis.Zotero;
+    try {
+      if (typeof zotero?.Prefs?.set === "function") {
+        zotero.Prefs.set(key, serialized);
+        return;
+      }
+    } catch (_) {
+    }
+    try {
+      const storage = doc?.defaultView?.localStorage || globalThis.localStorage;
+      storage?.setItem?.(key, serialized);
+    } catch (_) {
+    }
+  }
+
   // src/assistantSidebar.ts
   function formatAssistantConversationForCopy(turns) {
     return turns.map((turn) => {
@@ -16765,7 +16798,47 @@ AI\uFF1A${answer}`;
   var ASSISTANT_CONVERSATION_MAX_HEIGHT = 720;
   var MAX_CONVERSATION_HISTORY_TURNS = 6;
   var MAX_CONVERSATION_FIELD_LENGTH = 1200;
+  var ASSISTANT_CONVERSATIONS_STORAGE_KEY = "extensions.gemini-translator.assistant-conversations";
+  var MAX_PERSISTED_ASSISTANT_PAPERS = 12;
+  var MAX_PERSISTED_ASSISTANT_TURNS = 20;
+  var MAX_PERSISTED_ASSISTANT_FIELD_LENGTH = 12e3;
   var ASSISTANT_SVG_NS = "http://www.w3.org/2000/svg";
+  function normalizeAssistantTurns(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map((turn) => ({
+      question: String(turn?.question || "").slice(0, MAX_PERSISTED_ASSISTANT_FIELD_LENGTH),
+      answer: String(turn?.answer || "").slice(0, MAX_PERSISTED_ASSISTANT_FIELD_LENGTH)
+    })).filter((turn) => turn.question || turn.answer).slice(-MAX_PERSISTED_ASSISTANT_TURNS);
+  }
+  function loadPersistedAssistantTurns(doc, paperIdentity) {
+    if (!paperIdentity) return [];
+    const store = readPersistentJson(
+      ASSISTANT_CONVERSATIONS_STORAGE_KEY,
+      {},
+      doc
+    );
+    const record = store && typeof store === "object" && !Array.isArray(store) ? store[paperIdentity] : void 0;
+    return normalizeAssistantTurns(record?.turns);
+  }
+  function savePersistedAssistantTurns(doc, paperIdentity, turns) {
+    if (!paperIdentity) return;
+    const store = readPersistentJson(
+      ASSISTANT_CONVERSATIONS_STORAGE_KEY,
+      {},
+      doc
+    );
+    const normalizedStore = store && typeof store === "object" && !Array.isArray(store) ? store : {};
+    normalizedStore[paperIdentity] = {
+      turns: normalizeAssistantTurns(turns),
+      updatedAt: Date.now()
+    };
+    const recentKeys = Object.entries(normalizedStore).sort(([, left], [, right]) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0)).slice(0, MAX_PERSISTED_ASSISTANT_PAPERS).map(([key]) => key);
+    const recent = new Set(recentKeys);
+    for (const key of Object.keys(normalizedStore)) {
+      if (!recent.has(key)) delete normalizedStore[key];
+    }
+    writePersistentJson(ASSISTANT_CONVERSATIONS_STORAGE_KEY, normalizedStore, doc);
+  }
   function createAssistantSvgIcon(doc, className, viewBox, pathData) {
     const svg = doc.createElementNS(ASSISTANT_SVG_NS, "svg");
     svg.setAttribute("class", className);
@@ -17401,6 +17474,25 @@ AI\uFF1A${answer}`;
         historyIndex: -1
       };
     };
+    const renderConversationHistory = () => {
+      clearChildren(resultContent);
+      activeTurn = null;
+      completedAnswer = conversationHistory.at(-1)?.answer || "";
+      for (let index = 0; index < conversationHistory.length; index += 1) {
+        const savedTurn = conversationHistory[index];
+        const turn = createConversationTurn(savedTurn.question);
+        renderAnswer(doc, turn.assistantBubble, savedTurn.answer, true);
+        turn.status.textContent = "\u5DF2\u5B8C\u6210";
+        turn.status.dataset.state = "complete";
+        turn.finalized = true;
+        turn.historyIndex = index;
+      }
+      const hasHistory = conversationHistory.length > 0;
+      resultSection.hidden = !hasHistory;
+      emptyState.hidden = hasHistory;
+      resultStatus.textContent = hasHistory ? "\u5DF2\u6062\u590D" : "";
+      if (hasHistory) scrollConversationToBottom();
+    };
     const resetConversationTurn = (turn) => {
       clearChildren(turn.assistantBubble);
       turn.status.textContent = "\u601D\u8003\u4E2D";
@@ -17528,22 +17620,31 @@ AI\uFF1A${answer}`;
       setPaperInfo(info) {
         const nextInfo = { ...info };
         const nextIdentity = getPaperIdentity(nextInfo);
+        const initializingPaper = Boolean(nextIdentity && !paperIdentity);
         const paperChanged = Boolean(paperIdentity && nextIdentity && paperIdentity !== nextIdentity);
         paperInfo = nextInfo;
         paperIdentity = nextIdentity;
         renderPaper();
+        if (initializingPaper) {
+          if (!activeTurn && conversationHistory.length === 0) {
+            conversationHistory = loadPersistedAssistantTurns(doc, nextIdentity);
+            renderConversationHistory();
+          }
+          if (conversationHistory.length > 0) {
+            savePersistedAssistantTurns(doc, nextIdentity, conversationHistory);
+          }
+          return;
+        }
         if (!paperChanged) return;
         selectedText = "";
         selectionText.textContent = "";
         selectionSection.hidden = true;
         completedAnswer = "";
-        conversationHistory = [];
+        conversationHistory = loadPersistedAssistantTurns(doc, nextIdentity);
         activeTurn = null;
         resultStatus.textContent = "";
         resultStatus.removeAttribute("data-state");
-        clearChildren(resultContent);
-        resultSection.hidden = true;
-        emptyState.hidden = false;
+        renderConversationHistory();
         paperSection.open = true;
         input.value = "";
         sendButton.disabled = false;
@@ -17606,6 +17707,7 @@ AI\uFF1A${answer}`;
           conversationHistory.push(exchange);
           activeTurn.historyIndex = conversationHistory.length - 1;
         }
+        savePersistedAssistantTurns(doc, paperIdentity, conversationHistory);
         scrollConversationToBottom();
       },
       setError(errorMsg, onRetry) {
@@ -22020,6 +22122,9 @@ if __name__ == "__main__":
   var menuItemElements = [];
   var translationCache = new LRUCache(500);
   var translationCacheCapacity = 500;
+  var TRANSLATION_HISTORY_STORAGE_KEY = "extensions.gemini-translator.translation-history";
+  var MAX_PERSISTED_TRANSLATIONS = 80;
+  var MAX_PERSISTED_TRANSLATION_TEXT_LENGTH = 24e3;
   var MAX_QUESTION_LENGTH = 2e3;
   var PREFERENCE_PANE_ID = "gemini-translator-preferences";
   var preferencePaneRegistered = false;
@@ -22103,6 +22208,39 @@ if __name__ == "__main__":
       translationCacheCapacity = requestedCapacity;
     }
     return translationCache;
+  }
+  function compactPersistentKey(key) {
+    let hash = 2166136261;
+    for (let index = 0; index < key.length; index += 1) {
+      hash ^= key.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${(hash >>> 0).toString(16)}:${key.length}`;
+  }
+  function getCachedText(cache, key, doc) {
+    const inMemory = cache.get(key);
+    if (inMemory !== void 0) return inMemory;
+    const store = readPersistentJson(TRANSLATION_HISTORY_STORAGE_KEY, {}, doc);
+    const entry = store && typeof store === "object" && !Array.isArray(store) ? store[compactPersistentKey(key)] : void 0;
+    if (!entry || typeof entry.text !== "string" || !entry.text) return void 0;
+    cache.set(key, entry.text);
+    return entry.text;
+  }
+  function setCachedText(cache, key, text2, doc) {
+    if (!text2) return;
+    cache.set(key, text2);
+    const store = readPersistentJson(TRANSLATION_HISTORY_STORAGE_KEY, {}, doc);
+    const normalizedStore = store && typeof store === "object" && !Array.isArray(store) ? store : {};
+    normalizedStore[compactPersistentKey(key)] = {
+      text: text2.slice(0, MAX_PERSISTED_TRANSLATION_TEXT_LENGTH),
+      updatedAt: Date.now()
+    };
+    const recentKeys = Object.entries(normalizedStore).sort(([, left], [, right]) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0)).slice(0, MAX_PERSISTED_TRANSLATIONS).map(([entryKey]) => entryKey);
+    const recent = new Set(recentKeys);
+    for (const entryKey of Object.keys(normalizedStore)) {
+      if (!recent.has(entryKey)) delete normalizedStore[entryKey];
+    }
+    writePersistentJson(TRANSLATION_HISTORY_STORAGE_KEY, normalizedStore, doc);
   }
   function buildTranslationCacheKey(text2, config) {
     return JSON.stringify({
@@ -22235,7 +22373,7 @@ if __name__ == "__main__":
       return;
     }
     const cacheKey = buildQuestionCacheKey(context, question, config, imageAttachments);
-    const cached = cache.get(cacheKey);
+    const cached = getCachedText(cache, cacheKey, doc);
     if (cached) {
       sidebar.setDone(cached, true, config.enableKaTeX);
       await cleanupQuestionImages(imageAttachments);
@@ -22258,7 +22396,7 @@ if __name__ == "__main__":
                 void askAssistantSidebar(doc, sidebar, question, context, imageFiles);
               });
             } else {
-              cache.set(cacheKey, fullText);
+              setCachedText(cache, cacheKey, fullText, doc);
               sidebar.setDone(fullText, false, config.enableKaTeX);
             }
             if (activeAssistantAbortController === abortController) {
@@ -22481,7 +22619,7 @@ if __name__ == "__main__":
           }
           const cacheKey = buildQuestionCacheKey(cleanedText, normalizedQuestion, config, imageAttachments);
           controller?.setQuestionLoading(normalizedQuestion);
-          const cached = cache.get(cacheKey);
+          const cached = getCachedText(cache, cacheKey, doc);
           if (cached) {
             controller?.setQuestionDone(cached, true, config.enableKaTeX);
             await cleanupQuestionImages(imageAttachments);
@@ -22508,7 +22646,7 @@ if __name__ == "__main__":
                       void askSelectedText(normalizedQuestion, imageFiles);
                     });
                   } else {
-                    cache.set(cacheKey, fullText);
+                    setCachedText(cache, cacheKey, fullText, doc);
                     controller?.setQuestionDone(fullText, false, config.enableKaTeX);
                   }
                   if (activeQuestionAbortController === abortController) {
@@ -22538,7 +22676,7 @@ if __name__ == "__main__":
           const config = loadConfig();
           const cache = getTranslationCache(config);
           const cacheKey = buildTranslationCacheKey(cleanedText, config);
-          const cached = cache.get(cacheKey);
+          const cached = getCachedText(cache, cacheKey, doc);
           if (cached) {
             controller?.setDone(cached, true, config.enableKaTeX);
             return;
@@ -22566,7 +22704,7 @@ if __name__ == "__main__":
                   controller?.setStreaming(accumulated);
                 },
                 onDone: (fullText) => {
-                  cache.set(cacheKey, fullText);
+                  setCachedText(cache, cacheKey, fullText, doc);
                   controller?.setDone(fullText, false, config.enableKaTeX);
                   if (activeAbortController === abortController) {
                     activeAbortController = null;

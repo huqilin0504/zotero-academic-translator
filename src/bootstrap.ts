@@ -10,6 +10,7 @@ import { openDocTranslateModal } from './docTranslateModal';
 import { documentTranslationManager } from './docTranslateTasks';
 import { destroyDocumentTaskStatusBar, ensureDocumentTaskStatusBar } from './docTranslateStatus';
 import { ImageAttachment } from './types';
+import { readPersistentJson, writePersistentJson } from './persistentStore';
 
 let listenerID: string | null = null;
 let popupHandler: any = null;
@@ -34,6 +35,14 @@ const assistantLayouts = new WeakMap<Document, AssistantLayoutState>();
 const menuItemElements: any[] = [];
 let translationCache = new LRUCache<string, string>(500);
 let translationCacheCapacity = 500;
+const TRANSLATION_HISTORY_STORAGE_KEY = 'extensions.gemini-translator.translation-history';
+const MAX_PERSISTED_TRANSLATIONS = 80;
+const MAX_PERSISTED_TRANSLATION_TEXT_LENGTH = 24000;
+interface PersistedTextEntry {
+  text: string;
+  updatedAt: number;
+}
+type PersistedTextStore = Record<string, PersistedTextEntry>;
 const MAX_QUESTION_LENGTH = 2000;
 const PREFERENCE_PANE_ID = 'gemini-translator-preferences';
 let preferencePaneRegistered = false;
@@ -133,6 +142,48 @@ function getTranslationCache(config: ReturnType<typeof loadConfig>): LRUCache<st
     translationCacheCapacity = requestedCapacity;
   }
   return translationCache;
+}
+
+function compactPersistentKey(key: string): string {
+  // 问答上下文可能包含摘要和多轮历史；不要把整段上下文重复写进 Zotero.Prefs 的键名。
+  let hash = 2166136261;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${(hash >>> 0).toString(16)}:${key.length}`;
+}
+
+function getCachedText(cache: LRUCache<string, string>, key: string, doc?: Document): string | undefined {
+  const inMemory = cache.get(key);
+  if (inMemory !== undefined) return inMemory;
+  const store = readPersistentJson<PersistedTextStore>(TRANSLATION_HISTORY_STORAGE_KEY, {}, doc);
+  const entry = store && typeof store === 'object' && !Array.isArray(store)
+    ? store[compactPersistentKey(key)]
+    : undefined;
+  if (!entry || typeof entry.text !== 'string' || !entry.text) return undefined;
+  cache.set(key, entry.text);
+  return entry.text;
+}
+
+function setCachedText(cache: LRUCache<string, string>, key: string, text: string, doc?: Document): void {
+  if (!text) return;
+  cache.set(key, text);
+  const store = readPersistentJson<PersistedTextStore>(TRANSLATION_HISTORY_STORAGE_KEY, {}, doc);
+  const normalizedStore = store && typeof store === 'object' && !Array.isArray(store) ? store : {};
+  normalizedStore[compactPersistentKey(key)] = {
+    text: text.slice(0, MAX_PERSISTED_TRANSLATION_TEXT_LENGTH),
+    updatedAt: Date.now(),
+  };
+  const recentKeys = Object.entries(normalizedStore)
+    .sort(([, left], [, right]) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0))
+    .slice(0, MAX_PERSISTED_TRANSLATIONS)
+    .map(([entryKey]) => entryKey);
+  const recent = new Set(recentKeys);
+  for (const entryKey of Object.keys(normalizedStore)) {
+    if (!recent.has(entryKey)) delete normalizedStore[entryKey];
+  }
+  writePersistentJson(TRANSLATION_HISTORY_STORAGE_KEY, normalizedStore, doc);
 }
 
 function buildTranslationCacheKey(text: string, config: ReturnType<typeof loadConfig>): string {
@@ -307,7 +358,7 @@ async function askAssistantSidebar(
   }
 
   const cacheKey = buildQuestionCacheKey(context, question, config, imageAttachments);
-  const cached = cache.get(cacheKey);
+  const cached = getCachedText(cache, cacheKey, doc);
   if (cached) {
     sidebar.setDone(cached, true, config.enableKaTeX);
     await cleanupQuestionImages(imageAttachments);
@@ -331,7 +382,7 @@ async function askAssistantSidebar(
               void askAssistantSidebar(doc, sidebar, question, context, imageFiles);
             });
           } else {
-            cache.set(cacheKey, fullText);
+            setCachedText(cache, cacheKey, fullText, doc);
             sidebar.setDone(fullText, false, config.enableKaTeX);
           }
           if (activeAssistantAbortController === abortController) {
@@ -603,7 +654,7 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 
         controller?.setQuestionLoading(normalizedQuestion);
 
-        const cached = cache.get(cacheKey);
+        const cached = getCachedText(cache, cacheKey, doc);
         if (cached) {
           controller?.setQuestionDone(cached, true, config.enableKaTeX);
           await cleanupQuestionImages(imageAttachments);
@@ -632,7 +683,7 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
                       void askSelectedText(normalizedQuestion, imageFiles);
                     });
                   } else {
-                    cache.set(cacheKey, fullText);
+                    setCachedText(cache, cacheKey, fullText, doc);
                     controller?.setQuestionDone(fullText, false, config.enableKaTeX);
                   }
                   if (activeQuestionAbortController === abortController) {
@@ -667,7 +718,7 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
         const cacheKey = buildTranslationCacheKey(cleanedText, config);
 
         // 检查 0ms LRU 内存缓存
-        const cached = cache.get(cacheKey);
+        const cached = getCachedText(cache, cacheKey, doc);
         if (cached) {
           controller?.setDone(cached, true, config.enableKaTeX);
           return;
@@ -699,7 +750,7 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
                 controller?.setStreaming(accumulated);
               },
               onDone: (fullText) => {
-                cache.set(cacheKey, fullText);
+                setCachedText(cache, cacheKey, fullText, doc);
                 controller?.setDone(fullText, false, config.enableKaTeX);
                 if (activeAbortController === abortController) {
                   activeAbortController = null;

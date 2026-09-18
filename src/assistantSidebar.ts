@@ -1,5 +1,6 @@
 import { clearChildren, copyTextToClipboard, MAX_IMAGE_ATTACHMENT_BYTES } from './env';
 import { renderMarkdownInContainer } from './markdownRenderer';
+import { readPersistentJson, writePersistentJson } from './persistentStore';
 
 export interface AssistantPaperInfo {
   itemID?: number | string;
@@ -62,7 +63,69 @@ const ASSISTANT_CONVERSATION_DEFAULT_HEIGHT = 360;
 const ASSISTANT_CONVERSATION_MAX_HEIGHT = 720;
 const MAX_CONVERSATION_HISTORY_TURNS = 6;
 const MAX_CONVERSATION_FIELD_LENGTH = 1200;
+const ASSISTANT_CONVERSATIONS_STORAGE_KEY = 'extensions.gemini-translator.assistant-conversations';
+const MAX_PERSISTED_ASSISTANT_PAPERS = 12;
+const MAX_PERSISTED_ASSISTANT_TURNS = 20;
+const MAX_PERSISTED_ASSISTANT_FIELD_LENGTH = 12000;
 const ASSISTANT_SVG_NS = 'http://www.w3.org/2000/svg';
+
+interface PersistedAssistantConversation {
+  turns: AssistantConversationTurn[];
+  updatedAt: number;
+}
+
+type PersistedAssistantConversationStore = Record<string, PersistedAssistantConversation>;
+
+function normalizeAssistantTurns(value: unknown): AssistantConversationTurn[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((turn: any) => ({
+      question: String(turn?.question || '').slice(0, MAX_PERSISTED_ASSISTANT_FIELD_LENGTH),
+      answer: String(turn?.answer || '').slice(0, MAX_PERSISTED_ASSISTANT_FIELD_LENGTH),
+    }))
+    .filter((turn) => turn.question || turn.answer)
+    .slice(-MAX_PERSISTED_ASSISTANT_TURNS);
+}
+
+function loadPersistedAssistantTurns(doc: Document, paperIdentity: string): AssistantConversationTurn[] {
+  if (!paperIdentity) return [];
+  const store = readPersistentJson<PersistedAssistantConversationStore>(
+    ASSISTANT_CONVERSATIONS_STORAGE_KEY,
+    {},
+    doc
+  );
+  const record = store && typeof store === 'object' && !Array.isArray(store)
+    ? store[paperIdentity]
+    : undefined;
+  return normalizeAssistantTurns(record?.turns);
+}
+
+function savePersistedAssistantTurns(
+  doc: Document,
+  paperIdentity: string,
+  turns: AssistantConversationTurn[]
+): void {
+  if (!paperIdentity) return;
+  const store = readPersistentJson<PersistedAssistantConversationStore>(
+    ASSISTANT_CONVERSATIONS_STORAGE_KEY,
+    {},
+    doc
+  );
+  const normalizedStore = store && typeof store === 'object' && !Array.isArray(store) ? store : {};
+  normalizedStore[paperIdentity] = {
+    turns: normalizeAssistantTurns(turns),
+    updatedAt: Date.now(),
+  };
+  const recentKeys = Object.entries(normalizedStore)
+    .sort(([, left], [, right]) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0))
+    .slice(0, MAX_PERSISTED_ASSISTANT_PAPERS)
+    .map(([key]) => key);
+  const recent = new Set(recentKeys);
+  for (const key of Object.keys(normalizedStore)) {
+    if (!recent.has(key)) delete normalizedStore[key];
+  }
+  writePersistentJson(ASSISTANT_CONVERSATIONS_STORAGE_KEY, normalizedStore, doc);
+}
 
 function createAssistantSvgIcon(
   doc: Document,
@@ -793,6 +856,26 @@ export function createAssistantSidebar(
     };
   };
 
+  const renderConversationHistory = (): void => {
+    clearChildren(resultContent);
+    activeTurn = null;
+    completedAnswer = conversationHistory.at(-1)?.answer || '';
+    for (let index = 0; index < conversationHistory.length; index += 1) {
+      const savedTurn = conversationHistory[index];
+      const turn = createConversationTurn(savedTurn.question);
+      renderAnswer(doc, turn.assistantBubble, savedTurn.answer, true);
+      turn.status.textContent = '已完成';
+      turn.status.dataset.state = 'complete';
+      turn.finalized = true;
+      turn.historyIndex = index;
+    }
+    const hasHistory = conversationHistory.length > 0;
+    resultSection.hidden = !hasHistory;
+    emptyState.hidden = hasHistory;
+    resultStatus.textContent = hasHistory ? '已恢复' : '';
+    if (hasHistory) scrollConversationToBottom();
+  };
+
   const resetConversationTurn = (turn: ActiveAssistantTurn): void => {
     clearChildren(turn.assistantBubble);
     turn.status.textContent = '思考中';
@@ -926,10 +1009,23 @@ export function createAssistantSidebar(
     setPaperInfo(info) {
       const nextInfo = { ...info };
       const nextIdentity = getPaperIdentity(nextInfo);
+      const initializingPaper = Boolean(nextIdentity && !paperIdentity);
       const paperChanged = Boolean(paperIdentity && nextIdentity && paperIdentity !== nextIdentity);
       paperInfo = nextInfo;
       paperIdentity = nextIdentity;
       renderPaper();
+      if (initializingPaper) {
+        // 元数据通常异步到达；若用户在此之前已经发起问题，不要清掉正在
+        // 生成的那一轮，只在没有活动回答时恢复该论文的历史。
+        if (!activeTurn && conversationHistory.length === 0) {
+          conversationHistory = loadPersistedAssistantTurns(doc, nextIdentity);
+          renderConversationHistory();
+        }
+        if (conversationHistory.length > 0) {
+          savePersistedAssistantTurns(doc, nextIdentity, conversationHistory);
+        }
+        return;
+      }
       if (!paperChanged) return;
 
       // 阅读器复用同一个文档窗口切换 PDF 时，旧论文的选区、回答和图片不能继续留在侧栏。
@@ -937,13 +1033,11 @@ export function createAssistantSidebar(
       selectionText.textContent = '';
       selectionSection.hidden = true;
       completedAnswer = '';
-      conversationHistory = [];
+      conversationHistory = loadPersistedAssistantTurns(doc, nextIdentity);
       activeTurn = null;
       resultStatus.textContent = '';
       resultStatus.removeAttribute('data-state');
-      clearChildren(resultContent);
-      resultSection.hidden = true;
-      emptyState.hidden = false;
+      renderConversationHistory();
       paperSection.open = true;
       input.value = '';
       sendButton.disabled = false;
@@ -1006,6 +1100,7 @@ export function createAssistantSidebar(
         conversationHistory.push(exchange);
         activeTurn.historyIndex = conversationHistory.length - 1;
       }
+      savePersistedAssistantTurns(doc, paperIdentity, conversationHistory);
       scrollConversationToBottom();
     },
     setError(errorMsg, onRetry) {
