@@ -431,14 +431,14 @@
     throw new Error("\u65E0\u6CD5\u5728\u5F53\u524D Zotero \u73AF\u5883\u4E2D\u83B7\u53D6 fetch API");
   }
   function getAbortController(doc) {
-    if (doc?.defaultView?.AbortController) {
-      return doc.defaultView.AbortController;
-    }
     if (typeof Zotero !== "undefined") {
       const win = Zotero.getMainWindow?.();
       if (win?.AbortController) {
         return win.AbortController;
       }
+    }
+    if (doc?.defaultView?.AbortController) {
+      return doc.defaultView.AbortController;
     }
     if (typeof AbortController !== "undefined") {
       return AbortController;
@@ -456,14 +456,14 @@
     };
   }
   function getTextDecoder(doc) {
-    if (doc?.defaultView?.TextDecoder) {
-      return doc.defaultView.TextDecoder;
-    }
     if (typeof Zotero !== "undefined") {
       const win = Zotero.getMainWindow?.();
       if (win?.TextDecoder) {
         return win.TextDecoder;
       }
+    }
+    if (doc?.defaultView?.TextDecoder) {
+      return doc.defaultView.TextDecoder;
     }
     if (typeof TextDecoder !== "undefined") {
       return TextDecoder;

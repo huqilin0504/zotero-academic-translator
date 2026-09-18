@@ -31,14 +31,16 @@ export function getFetch(doc?: Document): typeof fetch {
 }
 
 export function getAbortController(doc?: Document): typeof AbortController {
-  if (doc?.defaultView?.AbortController) {
-    return doc.defaultView.AbortController;
-  }
+  // fetch 由 Zotero 主窗口执行时，AbortSignal 也应来自同一个 Gecko realm，
+  // 避免跨 iframe 传递信号时再次触发类型转换错误。
   if (typeof Zotero !== 'undefined') {
     const win = Zotero.getMainWindow?.();
     if (win?.AbortController) {
       return win.AbortController;
     }
+  }
+  if (doc?.defaultView?.AbortController) {
+    return doc.defaultView.AbortController;
   }
   if (typeof AbortController !== 'undefined') {
     return AbortController;
@@ -55,14 +57,16 @@ export function getAbortController(doc?: Document): typeof AbortController {
 }
 
 export function getTextDecoder(doc?: Document): typeof TextDecoder {
-  if (doc?.defaultView?.TextDecoder) {
-    return doc.defaultView.TextDecoder;
-  }
+  // streamChatPrompt 的响应来自 Zotero 主窗口 fetch。TextDecoder 必须来自
+  // 同一个 realm，否则 Gecko 可能拒绝另一个窗口生成的 Uint8Array。
   if (typeof Zotero !== 'undefined') {
     const win = Zotero.getMainWindow?.();
     if (win?.TextDecoder) {
       return win.TextDecoder;
     }
+  }
+  if (doc?.defaultView?.TextDecoder) {
+    return doc.defaultView.TextDecoder;
   }
   if (typeof TextDecoder !== 'undefined') {
     return TextDecoder;

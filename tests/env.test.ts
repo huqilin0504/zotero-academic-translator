@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { checkExecutable, copyTextToClipboard, getFetch, persistImageFile, removeTempImageAttachment } from '../src/env';
+import {
+  checkExecutable,
+  copyTextToClipboard,
+  getAbortController,
+  getFetch,
+  getTextDecoder,
+  persistImageFile,
+  removeTempImageAttachment,
+} from '../src/env';
 
 test('env: API 请求优先使用 Zotero 主窗口特权 fetch，避免 PDF iframe CORS', () => {
   const globals = globalThis as any;
@@ -20,6 +28,34 @@ test('env: API 请求优先使用 Zotero 主窗口特权 fetch，避免 PDF ifra
     const selected = getFetch({ defaultView: { fetch: readerFetch } } as unknown as Document);
     void selected('https://api.deepseek.com');
     assert.equal(mainThis, mainWindow);
+  } finally {
+    if (previousZotero === undefined) delete globals.Zotero;
+    else globals.Zotero = previousZotero;
+  }
+});
+
+test('env: 流式解码和取消控制器与 Zotero 主窗口 fetch 使用同一 realm', () => {
+  const globals = globalThis as any;
+  const previousZotero = globals.Zotero;
+  class MainDecoder {}
+  class ReaderDecoder {}
+  class MainAbortController {}
+  class ReaderAbortController {}
+  const mainWindow = {
+    TextDecoder: MainDecoder,
+    AbortController: MainAbortController,
+  };
+  globals.Zotero = { getMainWindow: () => mainWindow };
+
+  try {
+    const doc = {
+      defaultView: {
+        TextDecoder: ReaderDecoder,
+        AbortController: ReaderAbortController,
+      },
+    } as unknown as Document;
+    assert.equal(getTextDecoder(doc), MainDecoder);
+    assert.equal(getAbortController(doc), MainAbortController);
   } finally {
     if (previousZotero === undefined) delete globals.Zotero;
     else globals.Zotero = previousZotero;
