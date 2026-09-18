@@ -1,0 +1,2915 @@
+/* Zotero 7 翻译插件 - 轻量工具条 UI 规范 */
+
+:root {
+  /* 基础冷色调体系 (Cool Slate & Titanium Blue) */
+  --slate-50: #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-400: #94a3b8;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1e293b;
+  --slate-900: #0f172a;
+
+  /* 主色调 (冷钴蓝) */
+  --cool-primary: #2563eb;
+  --cool-primary-hover: #1d4ed8;
+  --cool-primary-subtle: #eff6ff;
+  --cool-primary-border: #bfdbfe;
+
+  /* 功能色 */
+  --cool-success: #059669;
+  --cool-success-subtle: #ecfdf5;
+  --cool-danger: #dc2626;
+  --cool-danger-subtle: #fef2f2;
+
+  /* 划词翻译卡片语义变量 */
+  --gemini-bg: #ffffff;
+  --gemini-text: #0f172a;
+  --gemini-text-secondary: #475569;
+  --gemini-border: #e2e8f0;
+  --gemini-primary: var(--cool-primary);
+  --gemini-primary-hover: var(--cool-primary-hover);
+  --gemini-badge-bg: var(--cool-primary-subtle);
+  --gemini-badge-text: var(--cool-primary);
+  --gemini-cache-bg: #f1f5f9;
+  --gemini-cache-text: #334155;
+  --gemini-error-bg: var(--cool-danger-subtle);
+  --gemini-error-text: var(--cool-danger);
+
+  /* 全文翻译模态弹窗语义变量 */
+  --modal-surface: #ffffff;
+  --modal-container: #f1f5f9;
+  --modal-on-surface: #0f172a;
+  --modal-on-surface-variant: #475569;
+  --modal-border: #e2e8f0;
+  --modal-track: #e2e8f0;
+  /* Google Sans 风格：优先使用 Google Sans/Inter，中文回退到 Noto Sans CJK。 */
+  --modal-font: "Google Sans", "Google Sans Text", Inter, "Noto Sans SC", "Noto Sans CJK SC", "Noto Sans", Roboto, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gemini-bg: #0f172a;
+    --gemini-text: #f8fafc;
+    --gemini-text-secondary: #94a3b8;
+    --gemini-border: #334155;
+    --gemini-primary: #60a5fa;
+    --gemini-primary-hover: #93c5fd;
+    --gemini-badge-bg: #1e293b;
+    --gemini-badge-text: #93c5fd;
+    --gemini-cache-bg: #1e293b;
+    --gemini-cache-text: #cbd5e1;
+    --gemini-error-bg: #450a0a;
+    --gemini-error-text: #f87171;
+
+    --modal-surface: #0f172a;
+    --modal-container: #1e293b;
+    --modal-on-surface: #f8fafc;
+    --modal-on-surface-variant: #94a3b8;
+    --modal-border: #334155;
+    --modal-track: #1e3a8a;
+  }
+}
+
+/* 划选弹窗宿主容器尺寸与间距适配 */
+.selection-popup.has-gemini-card,
+.selection-popup:has(.gemini-translate-card) {
+  width: min(286px, calc(100vw - 16px)) !important;
+  max-width: min(286px, calc(100vw - 16px)) !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.selection-popup.has-gemini-card .colors,
+.selection-popup:has(.gemini-translate-card) .colors {
+  width: 100% !important;
+  justify-content: space-between !important;
+}
+
+.selection-popup.has-gemini-card .custom-sections,
+.selection-popup:has(.gemini-translate-card) .custom-sections {
+  padding-top: 6px !important;
+}
+
+.selection-popup.has-gemini-card .custom-sections .section,
+.selection-popup:has(.gemini-translate-card) .custom-sections .section {
+  padding: 6px 0 0 0 !important;
+  border-top: 1px solid rgba(148, 163, 184, 0.18) !important;
+}
+
+/* 划词翻译卡片：贴近 Zotero 原生工具条，不使用 AI 品牌胶囊 */
+.gemini-translate-card {
+  font-family: var(--modal-font);
+  position: relative;
+  background: var(--gemini-bg) !important;
+  color: var(--gemini-text);
+  padding: 9px 10px 10px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  user-select: text;
+  border: 1px solid var(--gemini-border) !important;
+  border-radius: 4px;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.14);
+}
+
+.gemini-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 18px;
+  margin-bottom: 7px;
+}
+
+.gemini-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gemini-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gemini-text);
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 0;
+}
+
+/* 状态保持为内联文字，不再使用胶囊徽章 */
+.gemini-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--gemini-text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.gemini-status::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--slate-400);
+  content: '';
+}
+
+.gemini-status[data-state='loading']::before,
+.gemini-status[data-state='streaming']::before {
+  background: var(--cool-primary);
+}
+
+.gemini-status[data-state='complete']::before {
+  background: var(--slate-400);
+}
+
+.gemini-status[data-state='error']::before {
+  background: var(--cool-danger);
+}
+
+.gemini-status[data-state='cached']::before {
+  background: var(--slate-400);
+}
+
+.gemini-header-right {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+/* 只保留熟悉的图标动作，触屏/键盘仍有足够命中面积 */
+.gemini-btn-icon {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--gemini-text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  line-height: 1;
+}
+
+.gemini-btn-icon:hover {
+  background: var(--slate-100);
+  border-color: var(--gemini-border);
+  color: var(--gemini-primary);
+}
+
+.gemini-btn-icon:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.38);
+  outline-offset: 1px;
+}
+
+.gemini-btn-icon::before {
+  content: attr(data-icon);
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", sans-serif;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.gemini-btn-copy.copied,
+.gemini-btn-copy.copy-failed {
+  color: var(--cool-success);
+  background: var(--cool-success-subtle);
+  border-color: rgba(5, 150, 105, 0.18);
+}
+
+.gemini-btn-copy.copy-failed {
+  color: var(--cool-danger);
+  background: var(--cool-danger-subtle);
+  border-color: rgba(220, 38, 38, 0.18);
+}
+
+.gemini-btn-icon:disabled {
+  cursor: default;
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.gemini-content-box {
+  min-width: 0;
+  word-break: break-word;
+  white-space: normal;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--gemini-text);
+  padding: 0;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.gemini-streaming-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 模型回答的 Markdown：保留层级和节奏，但控制在 Zotero 划词卡片的密度内。 */
+.gemini-markdown {
+  overflow-wrap: anywhere;
+}
+
+.gemini-markdown p {
+  margin: 0 0 7px;
+}
+
+.gemini-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.gemini-markdown h1,
+.gemini-markdown h2,
+.gemini-markdown h3,
+.gemini-markdown h4,
+.gemini-markdown h5,
+.gemini-markdown h6 {
+  margin: 10px 0 5px;
+  color: var(--gemini-text);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.gemini-markdown h1 { font-size: 16px; }
+.gemini-markdown h2 { font-size: 15px; }
+.gemini-markdown h3 { font-size: 14px; }
+.gemini-markdown h4,
+.gemini-markdown h5,
+.gemini-markdown h6 { font-size: 13px; }
+
+.gemini-markdown ul,
+.gemini-markdown ol {
+  margin: 5px 0 8px;
+  padding-left: 21px;
+}
+
+.gemini-markdown li {
+  margin: 2px 0;
+  padding-left: 1px;
+}
+
+.gemini-markdown blockquote {
+  margin: 7px 0;
+  padding: 3px 9px;
+  border-left: 3px solid var(--gemini-primary);
+  background: var(--gemini-cache-bg);
+  color: var(--gemini-text-secondary);
+}
+
+.gemini-markdown blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.gemini-markdown hr {
+  margin: 9px 0;
+  border: 0;
+  border-top: 1px solid var(--gemini-border);
+}
+
+.gemini-markdown a {
+  color: var(--gemini-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.gemini-markdown-inline-code {
+  padding: 1px 4px;
+  border: 1px solid var(--gemini-border);
+  border-radius: 3px;
+  background: var(--gemini-cache-bg);
+  color: var(--gemini-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.gemini-markdown-code {
+  max-width: 100%;
+  margin: 7px 0;
+  padding: 8px 9px;
+  overflow: auto;
+  border: 1px solid var(--gemini-border);
+  border-radius: 4px;
+  background: var(--gemini-cache-bg);
+  color: var(--gemini-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.gemini-markdown-table {
+  width: 100%;
+  margin: 7px 0;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.gemini-markdown-table th,
+.gemini-markdown-table td {
+  padding: 4px 6px;
+  border: 1px solid var(--gemini-border);
+  vertical-align: top;
+}
+
+.gemini-markdown-table th {
+  background: var(--gemini-cache-bg);
+  font-weight: 600;
+}
+
+.gemini-markdown .katex-display {
+  display: block;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  margin: 7px 0;
+  padding: 1px 0;
+  scrollbar-width: thin;
+}
+
+.gemini-markdown .katex-display > .katex {
+  display: inline-block;
+  min-width: max-content;
+  max-width: none;
+}
+
+.gemini-markdown .katex {
+  font-size: 1em;
+  vertical-align: middle;
+}
+
+.gemini-markdown .katex-error {
+  display: inline-block;
+  padding: 1px 3px;
+  border: 1px solid var(--gemini-error-text);
+  border-radius: 3px;
+  color: var(--gemini-error-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+/* 结果布局：默认只有译文，提问后切换为左右双栏。 */
+.gemini-result-columns {
+  display: grid;
+  /* 未提问时只有译文，不能提前为隐藏的回答面板预留半列。 */
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  min-width: 0;
+}
+
+/* 兼容旧的双栏结果标记；当前问答入口使用独立侧边栏，不会扩宽宿主弹窗。 */
+.gemini-translate-card.has-question .gemini-result-columns {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.gemini-result-pane {
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--gemini-border);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--gemini-bg) 94%, var(--gemini-cache-bg));
+}
+
+.gemini-result-pane-header {
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 5px 8px 4px;
+  border-bottom: 1px solid var(--gemini-border);
+  color: var(--gemini-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.gemini-translation-pane .gemini-content-box {
+  max-height: 260px;
+  padding: 7px 8px 8px;
+}
+
+/* 提问输入与回答：输入区跨满整张卡片，回答面板位于译文右侧。 */
+.gemini-question-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.gemini-question-composer[hidden],
+.gemini-question-result[hidden] {
+  display: none !important;
+}
+
+.gemini-question-input {
+  width: 100%;
+  min-height: 48px;
+  max-height: 120px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--gemini-border);
+  border-radius: 4px;
+  background: var(--gemini-bg);
+  color: var(--gemini-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.gemini-question-input:focus {
+  border-color: var(--gemini-primary);
+  outline: 1px solid rgba(37, 99, 235, 0.2);
+  outline-offset: -1px;
+}
+
+.gemini-question-input::placeholder {
+  color: var(--gemini-text-secondary);
+  opacity: 0.8;
+}
+
+.gemini-question-composer.is-dragging {
+  border-radius: 4px;
+  outline: 1px dashed var(--gemini-primary);
+  outline-offset: 3px;
+  background: color-mix(in srgb, var(--gemini-primary) 7%, transparent);
+}
+
+.gemini-question-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.gemini-question-attachments[hidden],
+.gemini-question-image-input[hidden] {
+  display: none !important;
+}
+
+.gemini-question-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 4px 2px 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--gemini-border);
+  border-radius: 3px;
+  background: var(--gemini-cache-bg);
+  color: var(--gemini-text-secondary);
+  font-size: 10px;
+}
+
+.gemini-question-attachment-preview {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  object-fit: cover;
+  border-radius: 2px;
+  background: var(--gemini-bg);
+}
+
+.gemini-question-attachment-name {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gemini-question-attachment-remove {
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--gemini-text-secondary);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.gemini-question-attachment-remove:hover {
+  background: var(--gemini-error-bg);
+  color: var(--gemini-error-text);
+}
+
+.gemini-question-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.gemini-question-image-button,
+.gemini-question-cancel,
+.gemini-question-submit {
+  height: 25px;
+  padding: 0 9px;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.gemini-question-image-button {
+  margin-right: auto;
+  border: 1px solid var(--gemini-border);
+  background: transparent;
+  color: var(--gemini-text-secondary);
+}
+
+.gemini-question-image-button:hover {
+  border-color: var(--gemini-primary-border);
+  color: var(--gemini-primary);
+  background: var(--gemini-badge-bg);
+}
+
+.gemini-question-cancel {
+  border: 1px solid var(--gemini-border);
+  background: transparent;
+  color: var(--gemini-text-secondary);
+}
+
+.gemini-question-submit {
+  border: 1px solid var(--gemini-primary);
+  background: var(--gemini-primary);
+  color: #fff;
+}
+
+.gemini-question-submit:hover {
+  background: var(--gemini-primary-hover);
+  border-color: var(--gemini-primary-hover);
+}
+
+.gemini-question-submit:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.gemini-question-result {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.gemini-question-result-header {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  min-height: 24px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 5px 8px 4px;
+  border-bottom: 1px solid var(--gemini-border);
+  background: transparent;
+}
+
+.gemini-question-result-label {
+  flex: 0 0 auto;
+  color: var(--gemini-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gemini-question-result-prompt {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--gemini-text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gemini-question-content {
+  min-width: 0;
+  max-height: 220px;
+  padding: 7px 8px 8px;
+  box-sizing: border-box;
+  overflow: auto;
+  color: var(--gemini-text);
+  font-size: 12.5px;
+  line-height: 1.6;
+  word-break: break-word;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--gemini-text-secondary) 38%, transparent) transparent;
+}
+
+.gemini-content-box,
+.gemini-question-content {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--gemini-text-secondary) 38%, transparent) transparent;
+}
+
+.gemini-content-box::-webkit-scrollbar,
+.gemini-question-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.gemini-content-box::-webkit-scrollbar-track,
+.gemini-question-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.gemini-content-box::-webkit-scrollbar-thumb,
+.gemini-question-content::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gemini-text-secondary) 38%, transparent);
+  background-clip: padding-box;
+}
+
+.gemini-content-box::-webkit-scrollbar-thumb:hover,
+.gemini-question-content::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--gemini-primary) 58%, transparent);
+  background-clip: padding-box;
+}
+
+.gemini-question-content .katex-display,
+.gemini-content-box .katex-display {
+  display: block;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  padding: 1px 0;
+  scrollbar-width: thin;
+}
+
+.gemini-question-content .katex-display > .katex,
+.gemini-content-box .katex-display > .katex {
+  display: inline-block;
+  min-width: max-content;
+  max-width: none;
+}
+
+.gemini-question-content .katex-error,
+.gemini-content-box .katex-error {
+  color: var(--gemini-error-text);
+  overflow-wrap: anywhere;
+}
+
+.gemini-question-content .gemini-skeleton {
+  padding-top: 2px;
+}
+
+@media (max-width: 520px) {
+  .gemini-result-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.gemini-btn-question.is-active {
+  color: var(--gemini-primary);
+  background: var(--gemini-badge-bg);
+  border-color: var(--gemini-primary-border);
+}
+
+/* 流式结果只保留细光标，不显示大块动画装饰 */
+.gemini-cursor {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  background-color: var(--gemini-primary);
+  margin-left: 2px;
+  vertical-align: middle;
+  border-radius: 1px;
+  animation: gemini-blink 0.8s infinite;
+}
+
+@keyframes gemini-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* 骨架屏：静态、低对比度，避免把翻译卡片做成聊天机器人 */
+.gemini-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 4px 0 2px;
+}
+
+.gemini-skeleton-line {
+  height: 7px;
+  border-radius: 2px;
+  background: var(--slate-200);
+  opacity: 0.72;
+}
+
+.gemini-skeleton-line.short {
+  width: 45%;
+}
+
+/* 错误提示 */
+.gemini-error-box {
+  background: var(--gemini-error-bg);
+  color: var(--gemini-error-text);
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gemini-btn-retry {
+  background: var(--gemini-error-text);
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.gemini-sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* KaTeX 样式兼容 */
+.katex-mathml {
+  display: none !important;
+}
+
+.katex-display {
+  margin: 0.5em 0 !important;
+}
+
+.katex {
+  font-size: 1.05em !important;
+}
+
+/* 全文翻译模态弹窗 - 极简圆润冷色调 */
+.gemini-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.28);
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--modal-font);
+  user-select: none;
+}
+
+.gemini-modal-dialog {
+  background: var(--modal-surface);
+  color: var(--modal-on-surface);
+  border-radius: 8px;
+  width: 430px;
+  max-width: 92vw;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(148, 163, 184, 0.15);
+  padding: 18px 20px;
+  box-sizing: border-box;
+  animation: gemini-modal-scale 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes gemini-modal-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.gemini-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.gemini-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--modal-on-surface);
+  letter-spacing: -0.2px;
+}
+
+.gemini-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--modal-on-surface-variant);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 100px;
+  transition: all 0.15s ease;
+}
+
+.gemini-modal-close:hover {
+  background: var(--modal-container);
+  color: var(--modal-on-surface);
+}
+
+.gemini-modal-info {
+  background: var(--modal-container);
+  border-radius: 6px;
+  padding: 9px 11px;
+  margin-bottom: 13px;
+}
+
+.gemini-info-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--modal-on-surface);
+  margin-bottom: 3px;
+  word-break: break-word;
+}
+
+.gemini-info-path {
+  font-size: 11px;
+  color: var(--modal-on-surface-variant);
+  word-break: break-all;
+  font-family: var(--modal-font);
+}
+
+.gemini-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 13px;
+}
+
+.gemini-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.gemini-form-group label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--modal-on-surface-variant);
+}
+
+.gemini-select,
+.gemini-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  font-size: 12.5px;
+  border: 1px solid var(--modal-border);
+  border-radius: 4px;
+  background: var(--modal-surface);
+  color: var(--modal-on-surface);
+  outline: none;
+  font-family: var(--modal-font);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.gemini-select:focus,
+.gemini-input:focus {
+  border-color: var(--cool-primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+/* 胶囊药丸 Chips */
+.gemini-feature-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.gemini-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--modal-container);
+  color: var(--cool-primary);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 100px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .gemini-chip {
+    color: #93c5fd;
+  }
+}
+
+/* 进度条 */
+.gemini-progress-container {
+  background: var(--modal-container);
+  border-radius: 18px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.gemini-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.gemini-progress-status {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--modal-on-surface);
+}
+
+.gemini-progress-pct {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--cool-primary);
+}
+
+@media (prefers-color-scheme: dark) {
+  .gemini-progress-pct {
+    color: #60a5fa;
+  }
+}
+
+.gemini-progress-bar {
+  height: 5px;
+  border-radius: 100px;
+  background: var(--modal-track);
+  overflow: hidden;
+}
+
+.gemini-progress-fill {
+  height: 100%;
+  background: var(--cool-primary);
+  border-radius: 100px;
+  transition: width 0.35s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.gemini-progress-sub {
+  font-size: 11px;
+  color: var(--modal-on-surface-variant);
+  margin-top: 8px;
+}
+
+/* 全胶囊药丸操作按钮 */
+.gemini-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 7px;
+  padding-top: 2px;
+}
+
+.gemini-btn-primary,
+.gemini-btn-secondary,
+.gemini-btn-success {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--modal-font);
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  box-sizing: border-box;
+}
+
+.gemini-btn-primary {
+  background: var(--cool-primary);
+  color: #ffffff;
+  border: none;
+}
+
+.gemini-btn-primary:hover {
+  background: var(--cool-primary-hover);
+  box-shadow: none;
+}
+
+.gemini-btn-secondary {
+  background: transparent;
+  color: var(--modal-on-surface-variant);
+  border: 1px solid var(--modal-border);
+}
+
+.gemini-btn-secondary:hover {
+  background: var(--modal-container);
+  color: var(--modal-on-surface);
+}
+
+.gemini-btn-success {
+  background: var(--cool-success);
+  color: #ffffff;
+  border: none;
+}
+
+.gemini-btn-success:hover {
+  background: #047857;
+  box-shadow: none;
+}
+
+.gemini-toolbar-btn {
+  /* 工具栏只显示翻译图标，文字保留在 title/aria-label 中。 */
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  flex: 0 0 28px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  color: var(--gemini-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  height: 28px;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.gemini-toolbar-btn svg {
+  display: block !important;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0 !important;
+}
+
+.gemini-toolbar-btn .text {
+  display: none !important;
+}
+
+.gemini-toolbar-btn:hover {
+  background: var(--slate-100);
+  border-color: var(--cool-primary);
+  color: var(--cool-primary);
+}
+
+/* 全文翻译后台状态栏：贴近 Zotero 工具栏的小型下拉菜单 */
+.gemini-task-status {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 999998;
+  font-family: var(--modal-font);
+  color: var(--modal-on-surface);
+}
+
+.gemini-task-status[hidden] {
+  display: none !important;
+}
+
+.gemini-task-status-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid var(--modal-border);
+  border-radius: 5px;
+  background: var(--modal-surface);
+  color: var(--modal-on-surface-variant);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.gemini-task-status-toggle:hover,
+.gemini-task-status.is-active .gemini-task-status-toggle {
+  border-color: var(--cool-primary);
+  color: var(--cool-primary);
+}
+
+.gemini-task-status-percent {
+  color: var(--cool-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.gemini-task-status-arrow {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.gemini-task-status-panel {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  width: 300px;
+  max-width: min(300px, 86vw);
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: 7px;
+  border: 1px solid var(--modal-border);
+  border-radius: 6px;
+  background: var(--modal-surface);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.18);
+}
+
+.gemini-task-status-panel[hidden] {
+  display: none !important;
+}
+
+.gemini-task-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 4px 6px;
+  color: var(--modal-on-surface-variant);
+  font-size: 11px;
+  border-bottom: 1px solid var(--modal-border);
+}
+
+.gemini-task-row {
+  padding: 9px 4px 8px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.gemini-task-row:last-child {
+  border-bottom: none;
+}
+
+.gemini-task-row-top,
+.gemini-task-row-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.gemini-task-row-top {
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.gemini-task-row-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--modal-on-surface);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gemini-task-row-state {
+  flex: 0 0 auto;
+  color: var(--modal-on-surface-variant);
+  font-size: 10px;
+}
+
+.gemini-task-row-progress {
+  margin-bottom: 4px;
+}
+
+.gemini-task-progress {
+  flex: 1 1 auto;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--modal-track);
+}
+
+.gemini-task-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cool-primary);
+  transition: width 0.25s ease;
+}
+
+.gemini-task-row-percent {
+  min-width: 31px;
+  color: var(--cool-primary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.gemini-task-row-message {
+  overflow: hidden;
+  color: var(--modal-on-surface-variant);
+  font-size: 10px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gemini-task-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.gemini-task-action {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--modal-on-surface-variant);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.gemini-task-action:hover,
+.gemini-task-action.is-primary {
+  color: var(--cool-primary);
+}
+
+.gemini-task-row.is-failed .gemini-task-row-state,
+.gemini-task-row.is-failed .gemini-task-row-message {
+  color: var(--cool-danger);
+}
+
+.gemini-task-row.is-completed .gemini-task-row-state {
+  color: var(--cool-success);
+}
+
+.gemini-readonly-value {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--modal-border);
+  border-radius: 5px;
+  background: var(--modal-container);
+  color: var(--modal-on-surface-variant);
+  font-size: 12.5px;
+}
+
+.gemini-background-hint {
+  color: var(--modal-on-surface-variant);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/*
+ * Zotero reader popover style
+ *
+ * Keep the plugin controls visually close to Zotero's reader settings panel:
+ * compact rows, quiet separators, square controls, and one restrained accent
+ * color.  This intentionally replaces the earlier rounded-card treatment
+ * without changing the DOM or any interaction behavior.
+ */
+:root {
+  --zotero-popover-surface: #ffffff;
+  --zotero-popover-subtle: #f5f6f7;
+  --zotero-popover-text: #263238;
+  --zotero-popover-muted: #68727d;
+  --zotero-popover-border: #d4d8dc;
+  --zotero-popover-separator: #e1e4e7;
+  --zotero-popover-accent: #4f76c7;
+  --zotero-popover-accent-soft: #eaf1ff;
+  --zotero-popover-shadow: 0 3px 14px rgba(20, 28, 38, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --zotero-popover-surface: #20252b;
+    --zotero-popover-subtle: #2a3037;
+    --zotero-popover-text: #e8eaed;
+    --zotero-popover-muted: #aeb6c0;
+    --zotero-popover-border: #4a515b;
+    --zotero-popover-separator: #3a4149;
+    --zotero-popover-accent: #8eaff5;
+    --zotero-popover-accent-soft: #303d58;
+    --zotero-popover-shadow: 0 3px 16px rgba(0, 0, 0, 0.38);
+  }
+}
+
+/* 划词翻译卡片：像阅读器工具面板，而不是聊天气泡。 */
+.gemini-translate-card {
+  background: var(--zotero-popover-surface) !important;
+  color: var(--zotero-popover-text);
+  padding: 7px 8px 8px;
+  border: 1px solid var(--zotero-popover-border) !important;
+  border-radius: 3px;
+  box-shadow: var(--zotero-popover-shadow);
+}
+
+.gemini-card-header {
+  min-height: 20px;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--zotero-popover-separator);
+}
+
+.gemini-header-left {
+  gap: 6px;
+}
+
+.gemini-title {
+  color: var(--zotero-popover-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gemini-status {
+  gap: 4px;
+  color: var(--zotero-popover-muted);
+  font-size: 10.5px;
+}
+
+.gemini-btn-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+  color: var(--zotero-popover-muted);
+}
+
+.gemini-btn-icon:hover,
+.gemini-btn-question.is-active {
+  background: var(--zotero-popover-accent-soft);
+  border-color: var(--zotero-popover-accent);
+  color: var(--zotero-popover-accent);
+}
+
+.gemini-content-box {
+  font-size: 12.5px;
+  line-height: 1.58;
+  color: var(--zotero-popover-text);
+}
+
+.gemini-result-columns {
+  gap: 7px;
+}
+
+.gemini-result-pane {
+  border-color: var(--zotero-popover-border);
+  border-radius: 3px;
+  background: var(--zotero-popover-surface);
+}
+
+.gemini-result-pane-header,
+.gemini-question-result-header {
+  min-height: 23px;
+  padding: 4px 7px 3px;
+  border-bottom-color: var(--zotero-popover-separator);
+  color: var(--zotero-popover-muted);
+  font-size: 10.5px;
+}
+
+.gemini-translation-pane .gemini-content-box,
+.gemini-question-content {
+  padding: 6px 7px 7px;
+}
+
+.gemini-question-composer {
+  gap: 5px;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top-color: var(--zotero-popover-separator);
+}
+
+.gemini-question-input {
+  min-height: 42px;
+  padding: 5px 7px;
+  border-color: var(--zotero-popover-border);
+  border-radius: 3px;
+  background: var(--zotero-popover-surface);
+  color: var(--zotero-popover-text);
+  font-size: 11.5px;
+}
+
+.gemini-question-input:focus {
+  border-color: var(--zotero-popover-accent);
+  outline-color: color-mix(in srgb, var(--zotero-popover-accent) 30%, transparent);
+}
+
+.gemini-question-cancel,
+.gemini-question-submit {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 3px;
+  font-size: 10.5px;
+}
+
+.gemini-question-cancel {
+  border-color: var(--zotero-popover-border);
+  color: var(--zotero-popover-muted);
+}
+
+.gemini-question-submit {
+  border-color: var(--zotero-popover-accent);
+  background: var(--zotero-popover-accent);
+}
+
+.gemini-question-result-label {
+  color: var(--zotero-popover-text);
+  font-size: 11.5px;
+}
+
+.gemini-question-result-prompt {
+  color: var(--zotero-popover-muted);
+  font-size: 10.5px;
+}
+
+/* 全文翻译弹窗：沿用阅读器设置面板的紧凑分组与直角控件。 */
+.gemini-modal-backdrop {
+  background: rgba(22, 27, 34, 0.18);
+}
+
+.gemini-modal-dialog {
+  width: 390px;
+  max-width: calc(100vw - 20px);
+  padding: 12px 13px 10px;
+  border: 1px solid var(--zotero-popover-border);
+  border-radius: 5px;
+  background: var(--zotero-popover-surface);
+  color: var(--zotero-popover-text);
+  box-shadow: var(--zotero-popover-shadow);
+}
+
+.gemini-modal-header {
+  min-height: 23px;
+  margin-bottom: 9px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--zotero-popover-separator);
+}
+
+.gemini-modal-title {
+  color: var(--zotero-popover-text);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.gemini-modal-close {
+  padding: 2px 5px;
+  border-radius: 2px;
+  color: var(--zotero-popover-muted);
+}
+
+.gemini-modal-close:hover {
+  background: var(--zotero-popover-subtle);
+  color: var(--zotero-popover-text);
+}
+
+.gemini-modal-info {
+  margin-bottom: 9px;
+  padding: 7px 8px;
+  border: 1px solid var(--zotero-popover-separator);
+  border-radius: 3px;
+  background: var(--zotero-popover-subtle);
+}
+
+.gemini-info-title {
+  font-size: 12px;
+}
+
+.gemini-info-path {
+  font-size: 10px;
+}
+
+.gemini-modal-form {
+  gap: 0;
+  margin-bottom: 9px;
+}
+
+.gemini-form-group {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--zotero-popover-separator);
+}
+
+.gemini-form-group label {
+  color: var(--zotero-popover-muted);
+  font-size: 11px;
+}
+
+.gemini-select,
+.gemini-input,
+.gemini-readonly-value {
+  min-height: 25px;
+  padding: 4px 6px;
+  border: 1px solid var(--zotero-popover-border);
+  border-radius: 3px;
+  background: var(--zotero-popover-surface);
+  color: var(--zotero-popover-text);
+  font-size: 11.5px;
+}
+
+.gemini-readonly-value {
+  display: flex;
+  align-items: center;
+}
+
+.gemini-select:focus,
+.gemini-input:focus {
+  border-color: var(--zotero-popover-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--zotero-popover-accent) 25%, transparent);
+}
+
+.gemini-background-hint {
+  padding-top: 7px;
+  color: var(--zotero-popover-muted);
+  font-size: 10.5px;
+}
+
+.gemini-feature-chips {
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.gemini-chip {
+  padding: 3px 7px;
+  border: 1px solid var(--zotero-popover-border);
+  border-radius: 3px;
+  background: var(--zotero-popover-surface);
+  color: var(--zotero-popover-muted);
+  font-size: 10.5px;
+}
+
+.gemini-progress-container {
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--zotero-popover-separator);
+  border-radius: 3px;
+  background: var(--zotero-popover-subtle);
+}
+
+.gemini-progress-header {
+  margin-bottom: 7px;
+}
+
+.gemini-progress-status,
+.gemini-progress-pct {
+  font-size: 11.5px;
+}
+
+.gemini-progress-bar {
+  height: 4px;
+  border-radius: 1px;
+}
+
+.gemini-progress-fill {
+  border-radius: 1px;
+  background: var(--zotero-popover-accent);
+}
+
+.gemini-progress-sub {
+  margin-top: 6px;
+  font-size: 10px;
+}
+
+.gemini-modal-footer {
+  gap: 6px;
+  padding-top: 0;
+}
+
+.gemini-btn-primary,
+.gemini-btn-secondary,
+.gemini-btn-success {
+  height: 27px;
+  padding: 0 11px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.gemini-btn-primary {
+  background: var(--zotero-popover-accent);
+}
+
+.gemini-btn-secondary {
+  border-color: var(--zotero-popover-border);
+  color: var(--zotero-popover-muted);
+}
+
+/* 后台任务下拉状态栏：同一套直角、细分隔线语言。 */
+.gemini-task-status-toggle,
+.gemini-task-status-panel {
+  border-radius: 3px;
+  border-color: var(--zotero-popover-border);
+  background: var(--zotero-popover-surface);
+  box-shadow: var(--zotero-popover-shadow);
+}
+
+.gemini-task-status-toggle {
+  min-height: 24px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+}
+
+.gemini-task-status-panel {
+  width: 310px;
+  padding: 6px;
+}
+
+.gemini-task-panel-header,
+.gemini-task-row {
+  border-bottom-color: var(--zotero-popover-separator);
+}
+
+.gemini-task-row {
+  padding: 8px 3px 7px;
+}
+
+.gemini-task-progress {
+  height: 3px;
+  border-radius: 1px;
+}
+
+.gemini-task-progress-fill {
+  border-radius: 1px;
+  background: var(--zotero-popover-accent);
+}
+
+/* Typography alignment: use Zotero/Firefox's native system-ui metrics. */
+:root {
+  --zotero-popover-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Noto Sans", sans-serif;
+  --zotero-popover-font-size: 13px;
+  --zotero-popover-line-height: 1.35;
+}
+
+.gemini-translate-card,
+.gemini-modal-dialog,
+.gemini-task-status,
+.gemini-task-status-panel {
+  font-family: var(--zotero-popover-font);
+  font-size: var(--zotero-popover-font-size);
+  line-height: var(--zotero-popover-line-height);
+}
+
+.gemini-title {
+  font-size: 13px;
+}
+
+.gemini-status {
+  font-size: 12px;
+}
+
+.gemini-content-box,
+.gemini-question-content {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.gemini-result-pane-header,
+.gemini-question-result-header,
+.gemini-question-result-label,
+.gemini-question-result-prompt {
+  font-size: 12px;
+}
+
+.gemini-question-input,
+.gemini-question-cancel,
+.gemini-question-submit {
+  font-size: 13px;
+}
+
+.gemini-modal-title {
+  font-size: 14px;
+}
+
+.gemini-info-title {
+  font-size: 13px;
+}
+
+.gemini-info-path,
+.gemini-background-hint {
+  font-size: 11px;
+}
+
+.gemini-form-group label {
+  font-size: 12px;
+}
+
+.gemini-select,
+.gemini-input,
+.gemini-readonly-value {
+  font-family: var(--zotero-popover-font);
+  font-size: 13px;
+}
+
+.gemini-chip,
+.gemini-progress-status,
+.gemini-progress-pct,
+.gemini-btn-primary,
+.gemini-btn-secondary,
+.gemini-btn-success,
+.gemini-task-status-toggle {
+  font-size: 12px;
+}
+
+.gemini-progress-sub {
+  font-size: 11px;
+}
+
+/* 防止 Zotero 宿主的窄栏/书写模式把中文标签挤成竖排。 */
+.selection-popup:has(.gemini-translate-card) {
+  min-width: 286px !important;
+}
+
+.selection-popup:has(.gemini-translate-card) .custom-sections,
+.selection-popup:has(.gemini-translate-card) .custom-sections .section,
+.selection-popup:has(.gemini-translate-card) .custom-sections .section > .gemini-translate-card {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.gemini-translate-card,
+.gemini-translate-card * {
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+}
+
+.gemini-title,
+.gemini-status,
+.gemini-result-pane-header,
+.gemini-question-result-label,
+.gemini-question-result-prompt,
+.gemini-btn-icon,
+.gemini-question-image-button,
+.gemini-question-cancel,
+.gemini-question-submit,
+.gemini-task-status-toggle,
+.gemini-task-panel-header,
+.gemini-task-row-title,
+.gemini-task-row-state,
+.gemini-task-row-percent,
+.gemini-task-action {
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+
+.gemini-title,
+.gemini-result-pane-header,
+.gemini-question-result-label,
+.gemini-question-result-prompt,
+.gemini-btn-icon,
+.gemini-question-image-button,
+.gemini-question-cancel,
+.gemini-question-submit {
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+}
+
+.gemini-result-pane-header,
+.gemini-question-result-label {
+  flex: 0 0 auto;
+}
+
+/* 划词翻译宿主：翻译卡片保持窄宽，问答面板作为右侧独立浮层。 */
+.gemini-translation-shell {
+  position: relative;
+  display: block;
+  width: min(286px, 100%);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-family: var(--zotero-popover-font);
+  writing-mode: horizontal-tb;
+}
+
+.gemini-translation-shell > .gemini-translate-card {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* 卡片内的标题、译文标题和正文共用同一条左右边界；长单词/链接只能在内容区内折行。 */
+.gemini-translate-card,
+.gemini-translate-card .gemini-card-header,
+.gemini-translate-card .gemini-translation-pane,
+.gemini-translate-card .gemini-translation-pane > .gemini-result-pane-header,
+.gemini-translate-card .gemini-translation-pane > .gemini-content-box {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.gemini-translate-card .gemini-card-header {
+  width: 100%;
+}
+
+.gemini-translate-card .gemini-header-left {
+  flex: 1 1 auto;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.gemini-translate-card .gemini-title,
+.gemini-translate-card .gemini-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gemini-translate-card .gemini-translation-pane > .gemini-content-box {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.gemini-translate-card .gemini-content-box img,
+.gemini-translate-card .gemini-content-box svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.gemini-question-panel {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  left: calc(100% + 8px);
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-width: min(340px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 24px));
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 0 9px 9px;
+  border: 1px solid var(--zotero-popover-border);
+  border-radius: 3px;
+  background: var(--zotero-popover-surface);
+  color: var(--zotero-popover-text);
+  box-shadow: var(--zotero-popover-shadow);
+  font-family: var(--zotero-popover-font);
+  font-size: 13px;
+  line-height: 1.35;
+  writing-mode: horizontal-tb;
+}
+
+/* 由 ui.ts 根据实际视口计算偏移；这些状态只决定水平锚点，不允许面板把宿主撑宽。 */
+.gemini-question-panel.is-below {
+  left: 0;
+  right: auto;
+}
+
+.gemini-question-panel[hidden] {
+  display: none !important;
+}
+
+.gemini-question-panel.is-left {
+  right: calc(100% + 8px);
+  left: auto;
+}
+
+.gemini-question-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 31px;
+  padding: 0 0 0 2px;
+  border-bottom: 1px solid var(--zotero-popover-separator);
+  color: var(--zotero-popover-muted);
+  white-space: nowrap;
+}
+
+.gemini-question-panel-title {
+  color: var(--zotero-popover-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gemini-question-panel-close {
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+}
+
+.gemini-question-panel .gemini-question-composer {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 9px 0 8px;
+  border-top: 0;
+}
+
+.gemini-question-panel .gemini-question-input {
+  min-height: 58px;
+  font-size: 13px;
+}
+
+.gemini-question-panel .gemini-question-result {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.gemini-question-panel .gemini-question-content {
+  max-height: 340px;
+}
+
+/* 侧边栏打开时允许它溢出 Zotero 的选区浮层边界。 */
+.selection-popup:has(.gemini-question-panel:not([hidden])) {
+  overflow: visible !important;
+  z-index: 1000 !important;
+}
+
+@media (max-width: 720px) {
+  .gemini-question-panel {
+    width: min(340px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+  }
+}
+
+/* 问答是划词卡片的主操作，保留紧凑尺寸但明确显示文字入口。 */
+.gemini-btn-question {
+  width: auto;
+  min-width: 40px;
+  padding: 0 6px;
+  gap: 0;
+  font-family: var(--zotero-popover-font);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.gemini-btn-question::before {
+  content: '问答';
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1;
+}
+
+/*
+ * 选区翻译最终覆盖层：保留 Zotero 的紧凑边框，但给译文足够的阅读宽度。
+ * 这些规则放在文件末尾，覆盖前面为旧窄卡片保留的兼容规则。
+ */
+.selection-popup.has-gemini-card,
+.selection-popup:has(.gemini-translate-card) {
+  width: min(360px, calc(100vw - 16px)) !important;
+  max-width: min(360px, calc(100vw - 16px)) !important;
+}
+
+.selection-popup:has(.gemini-translate-card) {
+  min-width: min(360px, calc(100vw - 16px)) !important;
+}
+
+.gemini-translation-shell {
+  width: min(360px, 100%) !important;
+}
+
+.gemini-translation-pane .gemini-content-box {
+  max-height: min(360px, calc(100vh - 150px));
+  padding: 8px 12px 10px 9px;
+  scrollbar-gutter: stable;
+}
+
+.gemini-content-box,
+.gemini-question-content {
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+
+/* 常驻 AI 助手：固定在当前 PDF 阅读器右侧，视觉上沿用 Zotero 的设置面板。 */
+.gemini-assistant-toolbar-btn {
+  width: 28px !important;
+  min-width: 28px !important;
+  padding: 0 !important;
+  color: var(--zotero-popover-muted) !important;
+}
+
+.gemini-assistant-toolbar-btn:hover,
+.gemini-assistant-toolbar-btn[aria-pressed='true'] {
+  color: var(--zotero-popover-accent) !important;
+  background: var(--zotero-popover-accent-soft) !important;
+}
+
+.gemini-assistant-toolbar-btn svg {
+  display: block;
+  margin: 0 auto;
+}
+
+.gemini-assistant-sidebar {
+  position: fixed;
+  z-index: 1100;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: var(--gemini-assistant-width, 370px);
+  min-width: 300px;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  background: var(--zotero-popover-surface);
+  color: var(--zotero-popover-text);
+  border-left: 1px solid var(--zotero-popover-border);
+  box-shadow: -3px 0 14px rgba(20, 28, 38, 0.14);
+  font-family: var(--zotero-popover-font);
+  font-size: 13px;
+  line-height: 1.45;
+  writing-mode: horizontal-tb;
+}
+
+/* 侧栏左边的可拖拽边界；扩大命中区但不遮挡论文正文。 */
+.gemini-assistant-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.gemini-assistant-resize-handle::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: var(--zotero-popover-accent);
+  content: '';
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.gemini-assistant-resize-handle:hover::after,
+.gemini-assistant-sidebar.is-resizing .gemini-assistant-resize-handle::after,
+.gemini-assistant-resize-handle:focus-visible::after {
+  opacity: 0.8;
+}
+
+.gemini-assistant-sidebar.is-resizing,
+.gemini-assistant-sidebar.is-resizing * {
+  user-select: none;
+}
+
+.gemini-assistant-sidebar[hidden] {
+  display: none !important;
+}
+
+/* 由 bootstrap.ts 在宽屏阅读器上动态设置 right/margin-right。 */
+.gemini-assistant-reader-reflow {
+  transition: right 160ms ease, inset-inline-end 160ms ease, margin-right 160ms ease;
+}
+
+.gemini-assistant-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--zotero-popover-separator);
+}
+
+.gemini-assistant-title-group {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 7px;
+}
+
+.gemini-assistant-title {
+  color: var(--zotero-popover-text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gemini-assistant-status,
+.gemini-assistant-result-status {
+  color: var(--zotero-popover-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.gemini-assistant-close,
+.gemini-assistant-copy,
+.gemini-assistant-clear-selection,
+.gemini-assistant-attachment-remove {
+  border: 0;
+  background: transparent;
+  color: var(--zotero-popover-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.gemini-assistant-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 20px;
+}
+
+.gemini-assistant-close:hover,
+.gemini-assistant-copy:hover,
+.gemini-assistant-clear-selection:hover,
+.gemini-assistant-attachment-remove:hover {
+  color: var(--zotero-popover-accent);
+}
+
+.gemini-assistant-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 10px 12px 14px;
+}
+
+.gemini-assistant-paper,
+.gemini-assistant-selection,
+.gemini-assistant-result {
+  flex: 0 0 auto;
+  margin: 0 0 12px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--zotero-popover-separator);
+}
+
+.gemini-assistant-selection {
+  overflow: hidden;
+}
+
+.gemini-assistant-selection-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+  color: var(--zotero-popover-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+.gemini-assistant-selection-summary::-webkit-details-marker {
+  display: none;
+}
+
+.gemini-assistant-selection-summary::before {
+  margin-right: 5px;
+  content: '▸';
+  font-size: 11px;
+  transition: transform 120ms ease;
+}
+
+.gemini-assistant-selection[open] .gemini-assistant-selection-summary::before {
+  transform: rotate(90deg);
+}
+
+.gemini-assistant-selection-summary > span {
+  flex: 1 1 auto;
+}
+
+.gemini-assistant-paper-title {
+  margin: 0 0 7px;
+  color: var(--zotero-popover-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.gemini-assistant-paper-meta {
+  display: grid;
+  gap: 3px;
+}
+
+.gemini-assistant-meta-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 7px;
+  min-width: 0;
+}
+
+.gemini-assistant-meta-key {
+  color: var(--zotero-popover-muted);
+  white-space: nowrap;
+}
+
+.gemini-assistant-meta-value {
+  min-width: 0;
+  color: var(--zotero-popover-text);
+  overflow-wrap: anywhere;
+}
+
+.gemini-assistant-abstract {
+  margin-top: 8px;
+  color: var(--zotero-popover-text);
+}
+
+.gemini-assistant-abstract summary {
+  color: var(--zotero-popover-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.gemini-assistant-abstract-text {
+  max-height: 190px;
+  margin-top: 6px;
+  overflow: auto;
+  color: var(--zotero-popover-text);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.gemini-assistant-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+  color: var(--zotero-popover-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gemini-assistant-clear-selection,
+.gemini-assistant-copy {
+  padding: 2px 4px;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.gemini-assistant-selection-text {
+  max-height: 110px;
+  margin-top: 4px;
+  padding: 6px 7px;
+  border: 1px solid var(--zotero-popover-border);
+  background: var(--zotero-popover-subtle);
+  color: var(--zotero-popover-text);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.gemini-assistant-result {
+  min-height: 0;
+}
+
+.gemini-assistant-conversation {
+  display: flex;
+  flex-direction: column;
+  min-height: 150px;
+  overflow: hidden;
+}
+
+.gemini-assistant-result[hidden],
+.gemini-assistant-conversation[hidden] {
+  display: none !important;
+}
+
+.gemini-assistant-conversation.is-height-adjusted {
+  flex: 0 0 var(--gemini-assistant-conversation-height, 360px);
+  height: var(--gemini-assistant-conversation-height, 360px);
+}
+
+.gemini-assistant-conversation-resize-handle {
+  position: relative;
+  flex: 0 0 8px;
+  height: 8px;
+  margin: 0 0 2px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.gemini-assistant-conversation-resize-handle::after {
+  position: absolute;
+  top: 3px;
+  right: 35%;
+  left: 35%;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--zotero-popover-border);
+  content: '';
+  transition: background-color 120ms ease, left 120ms ease, right 120ms ease;
+}
+
+.gemini-assistant-conversation-resize-handle:hover::after,
+.gemini-assistant-conversation-resize-handle:focus-visible::after,
+.gemini-assistant-sidebar.is-resizing-conversation .gemini-assistant-conversation-resize-handle::after {
+  right: 28%;
+  left: 28%;
+  background: var(--zotero-popover-accent);
+}
+
+.gemini-assistant-sidebar.is-resizing-conversation,
+.gemini-assistant-sidebar.is-resizing-conversation * {
+  user-select: none;
+}
+
+.gemini-assistant-result-content {
+  min-height: 20px;
+  max-height: none;
+  margin-top: 4px;
+  overflow: visible;
+  color: var(--zotero-popover-text);
+  overflow-wrap: anywhere;
+}
+
+.gemini-assistant-conversation-list {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 14px;
+  padding-right: 4px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.gemini-assistant-turn {
+  display: grid;
+  gap: 10px;
+}
+
+.gemini-assistant-message {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.gemini-assistant-message-user {
+  justify-items: end;
+}
+
+.gemini-assistant-message-label,
+.gemini-assistant-message-status {
+  color: var(--zotero-popover-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.gemini-assistant-message-user .gemini-assistant-message-label {
+  padding-right: 2px;
+}
+
+.gemini-assistant-message-bubble {
+  box-sizing: border-box;
+  max-width: 92%;
+  padding: 7px 9px;
+  border: 1px solid var(--zotero-popover-border);
+  border-radius: 7px;
+  color: var(--zotero-popover-text);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.gemini-assistant-message-user .gemini-assistant-message-bubble {
+  background: var(--zotero-popover-accent-soft);
+  border-color: var(--zotero-popover-border);
+  white-space: pre-wrap;
+}
+
+.gemini-assistant-message-assistant .gemini-assistant-message-bubble {
+  width: 100%;
+  max-width: none;
+  background: var(--zotero-popover-subtle);
+}
+
+.gemini-assistant-message-assistant .gemini-assistant-message-status {
+  min-height: 14px;
+}
+
+.gemini-assistant-answer-bubble .gemini-markdown {
+  color: var(--zotero-popover-text);
+}
+
+.gemini-assistant-result-content img,
+.gemini-assistant-result-content svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.gemini-assistant-composer {
+  flex: 0 0 auto;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--zotero-popover-separator);
+  background: var(--zotero-popover-surface);
+}
+
+.gemini-assistant-input {
+  display: block;
+  width: 100%;
+  min-height: 62px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 7px 8px;
+  border: 1px solid var(--zotero-popover-border);
+  border-radius: 2px;
+  background: var(--zotero-popover-surface);
+  color: var(--zotero-popover-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.gemini-assistant-input:focus {
+  outline: 1px solid var(--zotero-popover-accent);
+  outline-offset: -1px;
+}
+
+.gemini-assistant-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.gemini-assistant-input-hint {
+  margin-top: 5px;
+  color: var(--zotero-popover-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: right;
+  user-select: none;
+}
+
+.gemini-assistant-image-button,
+.gemini-assistant-send,
+.gemini-assistant-retry {
+  padding: 4px 9px;
+  border: 1px solid var(--zotero-popover-border);
+  border-radius: 2px;
+  background: var(--zotero-popover-surface);
+  color: var(--zotero-popover-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.gemini-assistant-image-button:hover {
+  border-color: var(--zotero-popover-accent);
+}
+
+.gemini-assistant-send {
+  border-color: var(--zotero-popover-accent);
+  background: var(--zotero-popover-accent);
+  color: #fff;
+}
+
+.gemini-assistant-send:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.gemini-assistant-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.gemini-assistant-attachment {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 1px solid var(--zotero-popover-border);
+  background: var(--zotero-popover-subtle);
+}
+
+.gemini-assistant-attachment-preview {
+  width: 18px;
+  height: 18px;
+  object-fit: cover;
+}
+
+.gemini-assistant-attachment-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.gemini-assistant-attachment-remove {
+  padding: 0 2px;
+  font-size: 13px;
+}
+
+.gemini-assistant-composer.is-dragging {
+  background: var(--zotero-popover-accent-soft);
+}
+
+.gemini-assistant-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 7px;
+  background: #fff0f0;
+  color: #b42318;
+  font-size: 12px;
+}
+
+.gemini-assistant-retry {
+  flex: 0 0 auto;
+  border-color: #e2a6a6;
+  color: #b42318;
+}
+
+.gemini-assistant-skeleton {
+  display: grid;
+  gap: 7px;
+  padding: 6px 0;
+}
+
+.gemini-assistant-skeleton-line {
+  height: 8px;
+  background: linear-gradient(90deg, var(--zotero-popover-subtle), var(--zotero-popover-border), var(--zotero-popover-subtle));
+  background-size: 200% 100%;
+  animation: gemini-assistant-loading 1.2s ease-in-out infinite;
+}
+
+.gemini-assistant-skeleton-line.short {
+  width: 65%;
+}
+
+@keyframes gemini-assistant-loading {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (max-width: 760px) {
+  .gemini-assistant-sidebar {
+    width: min(360px, 100vw);
+    min-width: 0;
+  }
+}
+
+/* AI 助手 Gemini 风格：保留论文信息，上层动作轻量化，输入区变为圆角对话框。 */
+.gemini-assistant-header {
+  min-height: 44px;
+  padding: 0 10px 0 8px;
+  border-bottom: 1px solid var(--zotero-popover-separator);
+}
+
+.gemini-assistant-header-menu,
+.gemini-assistant-paper-action {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--zotero-popover-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 17px;
+  line-height: 28px;
+  text-align: center;
+}
+
+.gemini-assistant-header-menu:hover,
+.gemini-assistant-paper-action:hover,
+.gemini-assistant-header-menu:focus-visible,
+.gemini-assistant-paper-action:focus-visible {
+  background: var(--zotero-popover-subtle);
+  color: var(--zotero-popover-text);
+  outline: none;
+}
+
+.gemini-assistant-title-group {
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  margin-left: 5px;
+}
+
+.gemini-assistant-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.gemini-assistant-status {
+  max-width: 124px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gemini-assistant-header-actions {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.gemini-assistant-close {
+  border-radius: 7px;
+}
+
+.gemini-assistant-paper {
+  margin: 0 0 8px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--zotero-popover-separator);
+}
+
+.gemini-assistant-paper-summary {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 10px;
+  padding: 0 0 7px;
+  color: var(--zotero-popover-muted);
+  cursor: pointer;
+  font-size: 11px;
+  list-style: none;
+  user-select: none;
+}
+
+/* 论文信息按用户要求保持原来的顶部样式；标题行本身就是信息块的起点。 */
+.gemini-assistant-paper-summary {
+  display: none;
+}
+
+.gemini-assistant-paper-summary::-webkit-details-marker {
+  display: none;
+}
+
+.gemini-assistant-paper-summary::before {
+  flex: 0 0 auto;
+  content: '▸';
+  font-size: 10px;
+  transition: transform 120ms ease;
+}
+
+.gemini-assistant-paper[open] .gemini-assistant-paper-summary::before {
+  transform: rotate(90deg);
+}
+
+.gemini-assistant-paper-summary-label {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.gemini-assistant-paper-summary-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--zotero-popover-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gemini-assistant-paper-title {
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.gemini-assistant-meta-row {
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 9px;
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.gemini-assistant-abstract {
+  margin-top: 7px;
+}
+
+.gemini-assistant-empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 250px;
+  padding: 46px 0 0;
+}
+
+.gemini-assistant-empty[hidden] {
+  display: none !important;
+}
+
+.gemini-assistant-empty-title {
+  margin: 0;
+  color: #1a73e8;
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.gemini-assistant-empty-suggestions {
+  display: grid;
+  gap: 1px;
+  margin-top: auto;
+  padding-top: 38px;
+}
+
+.gemini-assistant-quick-action {
+  position: relative;
+  min-height: 34px;
+  padding: 6px 8px 6px 25px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--zotero-popover-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.gemini-assistant-quick-action::before {
+  position: absolute;
+  top: 7px;
+  left: 1px;
+  content: '↪';
+  color: var(--zotero-popover-muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.gemini-assistant-quick-action:hover,
+.gemini-assistant-quick-action:focus-visible {
+  background: var(--zotero-popover-subtle);
+  outline: none;
+}
+
+.gemini-assistant-composer {
+  box-sizing: border-box;
+  padding: 8px 12px 12px;
+  border-top: 0;
+}
+
+.gemini-assistant-composer-shell {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 10px 8px;
+  border: 1px solid var(--zotero-popover-border);
+  border-radius: 17px;
+  background: var(--zotero-popover-surface);
+  box-shadow: 0 1px 2px rgba(20, 28, 38, 0.04);
+  overflow: hidden;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.gemini-assistant-composer:focus-within .gemini-assistant-composer-shell {
+  border-color: var(--zotero-popover-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--zotero-popover-accent) 16%, transparent);
+}
+
+.gemini-assistant-input {
+  width: 100%;
+  min-height: 38px;
+  max-height: 140px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 15px;
+  line-height: 1.4;
+  resize: none;
+}
+
+.gemini-assistant-input:focus {
+  outline: none;
+}
+
+.gemini-assistant-input::placeholder {
+  color: var(--zotero-popover-muted);
+  opacity: 0.9;
+}
+
+.gemini-assistant-actions {
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.gemini-assistant-composer-tools {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.gemini-assistant-image-button,
+.gemini-assistant-context-button {
+  height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--zotero-popover-subtle);
+  color: var(--zotero-popover-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.gemini-assistant-image-button:hover,
+.gemini-assistant-context-button:hover,
+.gemini-assistant-image-button:focus-visible,
+.gemini-assistant-context-button:focus-visible {
+  background: var(--zotero-popover-accent-soft);
+  color: var(--zotero-popover-accent);
+  outline: none;
+}
+
+.gemini-assistant-send {
+  flex: 0 0 31px;
+  width: 31px;
+  height: 31px;
+  padding: 0 0 2px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--zotero-popover-accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 31px;
+}
+
+.gemini-assistant-send:hover {
+  background: color-mix(in srgb, var(--zotero-popover-accent) 86%, #000);
+}
+
+.gemini-assistant-send:disabled {
+  background: var(--zotero-popover-border);
+  color: var(--zotero-popover-muted);
+}
+
+.gemini-assistant-input-hint {
+  margin-top: 6px;
+  padding-right: 3px;
+  font-size: 10px;
+  text-align: right;
+}

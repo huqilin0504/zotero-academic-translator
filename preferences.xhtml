@@ -1,0 +1,94 @@
+<vbox id="gemini-translator-preferences"
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  class="gemini-prefs-pane"
+  onload="Zotero.GeminiTranslatorPreferences.init();">
+  <html:div class="gemini-prefs-intro">
+    <html:h1>文献翻译</html:h1>
+    <html:p>划词、图片问答和全文 PDF 都使用这里选择的接口与模型。默认使用 DeepSeek Flash，多模态图片直接通过 API 发送。</html:p>
+  </html:div>
+
+  <groupbox class="gemini-prefs-group">
+    <label><html:h2>翻译引擎</html:h2></label>
+    <html:p class="gemini-prefs-description">DeepSeek Flash 支持图片输入；翻译请求关闭思考以降低首字延迟，划词问答保留 high 思考强度。DeepSeek 和 Gemini 均需要填写对应 API Key。</html:p>
+
+    <hbox class="gemini-prefs-row" align="center">
+      <label value="引擎模式" />
+      <html:select id="gemini-translator-endpoint-type" class="gemini-prefs-control" aria-label="引擎模式">
+        <html:option value="deepseek">DeepSeek Flash（官方多模态）</html:option>
+        <html:option value="agy">本机模型（agy）</html:option>
+        <html:option value="ollama">本机 Ollama（兼容接口）</html:option>
+        <html:option value="gemini">Gemini 官方接口（云端）</html:option>
+      </html:select>
+    </hbox>
+
+    <hbox class="gemini-prefs-row" align="center">
+      <label id="gemini-translator-endpoint-label" value="DeepSeek API 地址" />
+      <html:input id="gemini-translator-endpoint-value" class="gemini-prefs-control" type="text" />
+    </hbox>
+
+    <hbox class="gemini-prefs-row" align="center">
+      <label value="模型名称" />
+      <html:select id="gemini-translator-model" class="gemini-prefs-control" aria-label="模型名称" />
+    </hbox>
+    <hbox id="gemini-translator-model-custom-row" class="gemini-prefs-row" align="center" hidden="true">
+      <label value="自定义模型" />
+      <html:input id="gemini-translator-model-custom" class="gemini-prefs-control" type="text" placeholder="填写供应商提供的模型名" />
+    </hbox>
+    <html:div id="gemini-translator-model-hint" class="gemini-prefs-model-hint" />
+
+    <hbox id="gemini-translator-api-key-row" class="gemini-prefs-row" align="center">
+      <label value="API Key" />
+      <html:input id="gemini-translator-api-key" class="gemini-prefs-control" type="password" autocomplete="off" />
+    </hbox>
+  </groupbox>
+
+  <groupbox class="gemini-prefs-group">
+    <label><html:h2>划词翻译</html:h2></label>
+    <hbox class="gemini-prefs-row" align="center">
+      <label value="目标语言" />
+      <html:input id="gemini-translator-target-language" class="gemini-prefs-control" type="text" />
+    </hbox>
+    <hbox class="gemini-prefs-row gemini-prefs-row-top" align="start">
+      <label value="翻译提示词" />
+      <html:textarea id="gemini-translator-system-prompt" class="gemini-prefs-control gemini-prefs-textarea" rows="5" />
+    </hbox>
+    <hbox class="gemini-prefs-checks" align="center">
+      <checkbox id="gemini-translator-auto-translate" native="true" label="划词后自动翻译" />
+      <checkbox id="gemini-translator-enable-katex" native="true" label="渲染 LaTeX 公式" />
+    </hbox>
+    <hbox class="gemini-prefs-row" align="center">
+      <label value="缓存条数" />
+      <html:input id="gemini-translator-cache-size" class="gemini-prefs-control gemini-prefs-number" type="number" min="0" max="10000" step="50" />
+    </hbox>
+  </groupbox>
+
+  <groupbox class="gemini-prefs-group">
+    <label><html:h2>全文翻译</html:h2></label>
+    <hbox class="gemini-prefs-row" align="center">
+      <label value="输出模式" />
+      <html:select id="gemini-translator-doc-mode" class="gemini-prefs-control" aria-label="全文翻译输出模式">
+        <html:option value="mono">中文单语（高保真排版）</html:option>
+        <html:option value="dual">中英双语对照</html:option>
+      </html:select>
+    </hbox>
+    <hbox class="gemini-prefs-row" align="center">
+      <label value="并发任务数" />
+      <html:input id="gemini-translator-doc-threads" class="gemini-prefs-control gemini-prefs-number" type="number" min="1" max="16" step="1" />
+    </hbox>
+    <hbox class="gemini-prefs-row" align="center">
+      <label value="pdf2zh 路径" />
+      <html:input id="gemini-translator-pdf2zh-path" class="gemini-prefs-control" type="text" placeholder="pdf2zh（按 PATH 查找）" />
+    </hbox>
+    <html:p class="gemini-prefs-description">agy 和 pdf2zh 默认按系统 PATH 查找；首次使用时会用实际启动结果检查环境。若未加入 PATH，可在这里填写绝对路径。</html:p>
+    <checkbox id="gemini-translator-doc-auto-open" native="true" label="完成后自动打开译文 PDF" />
+  </groupbox>
+
+  <hbox class="gemini-prefs-footer" align="center">
+    <label id="gemini-translator-save-status" class="gemini-prefs-status" value="" />
+    <spacer flex="1" />
+    <button id="gemini-translator-check-env" label="检查环境" />
+    <button id="gemini-translator-reset" label="恢复默认" />
+    <button id="gemini-translator-save" class="primary" label="保存设置" />
+  </hbox>
+</vbox>

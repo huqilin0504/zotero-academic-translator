@@ -1,0 +1,19 @@
+{
+  "addons": {
+    "gemini-translator@local.ai": {
+      "updates": [
+        {
+          "version": "1.0.49",
+          "update_link": "https://github.com/huqilin0504/zotero-academic-translator/releases/download/v1.0.49/zotero-academic-translator-1.0.49.xpi",
+          "update_hash": "sha256:a3711a11c1626f2823864fe025e6cbf75c112b71ebe31cfbbd57bb96a7596413",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "7.0",
+              "strict_max_version": "10.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

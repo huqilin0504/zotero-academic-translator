@@ -1,0 +1,7 @@
+node_modules/
+*.xpi
+design-qa.md
+.DS_Store
+*.log
+__pycache__/
+*.pyc

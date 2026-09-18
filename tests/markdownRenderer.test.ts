@@ -1,0 +1,54 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { renderMarkdownToHtml } from '../src/markdownRenderer';
+
+test('markdownRenderer: 标题、粗体、列表和行内代码保留结构', () => {
+  const html = renderMarkdownToHtml('# 结论\n\n这是 **重点**，调用 `streamAsk()`。\n\n1. 第一项\n2. 第二项');
+
+  assert.match(html, /<h1>结论<\/h1>/);
+  assert.match(html, /<strong>重点<\/strong>/);
+  assert.match(html, /<code class="gemini-markdown-inline-code">streamAsk\(\)<\/code>/);
+  assert.match(html, /<ol><li>第一项<\/li><li>第二项<\/li><\/ol>/);
+});
+
+test('markdownRenderer: 代码块、表格和公式可以同时渲染', () => {
+  const html = renderMarkdownToHtml(
+    '```python\nprint("ok")\n```\n\n| 项目 | 结果 |\n| --- | :---: |\n| $x$ | **通过** |'
+  );
+
+  assert.match(html, /<pre class="gemini-markdown-code"><code class="language-python">/);
+  assert.match(html, /print\(&quot;ok&quot;\)/);
+  assert.match(html, /<table class="gemini-markdown-table">/);
+  assert.match(html, /katex/);
+  assert.match(html, /<strong>通过<\/strong>/);
+});
+
+test('markdownRenderer: 模型 HTML 被转义，危险链接不会生成可点击地址', () => {
+  const html = renderMarkdownToHtml(
+    '<script>alert(1)</script> [危险](javascript:alert(1)) [安全](https://example.com)'
+  );
+
+  assert.equal(html.includes('<script>'), false);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.equal(html.includes('javascript:'), false);
+  assert.match(html, /href="https:\/\/example\.com"/);
+});
+
+test('markdownRenderer: 关闭 KaTeX 时公式保持文本且 Markdown 仍生效', () => {
+  const html = renderMarkdownToHtml('**公式** $x$', false);
+
+  assert.match(html, /<strong>公式<\/strong>/);
+  assert.equal(html.includes('katex'), false);
+  assert.match(html, /\$x\$/);
+});
+
+test('markdownRenderer: 划词翻译常见 LaTeX 分隔符与 Markdown 混排', () => {
+  const html = renderMarkdownToHtml(
+    '结论是 \\(p \\leq 0.05\\)。\n\n\\[\\hat{y}=\\sigma(Wx+b)\\]\n\n```text\n$not-a-formula$\n```'
+  );
+
+  assert.match(html, /katex/);
+  assert.match(html, /katex-display/);
+  assert.match(html, /\$not-a-formula\$/);
+  assert.equal(html.includes('<code class="gemini-markdown-inline-code">'), false);
+});
