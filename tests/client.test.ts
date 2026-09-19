@@ -88,6 +88,20 @@ test('client: AI 助手上下文不会沿用划词翻译的 12k 截断上限', (
   assert.match(prompt, /上一轮回答/);
 });
 
+test('client: AI 助手优先使用全文，选区只作为定位线索', () => {
+  const context = [
+    'PAPER_METADATA_JSON: {"title":"paper"}',
+    'PAPER_FULL_TEXT_JSON: "全文中的实验结论"',
+    'CURRENT_SELECTED_TEXT_JSON: "当前选区"',
+    'CONVERSATION_HISTORY_JSON: []',
+  ].join('\n\n');
+  const prompt = buildQuestionPrompt(context, '实验结论是什么？', '简体中文');
+
+  assert.match(prompt, /PAPER_FULL_TEXT_JSON/);
+  assert.match(prompt, /as the primary paper source/);
+  assert.match(prompt, /CURRENT_SELECTED_TEXT_JSON only as the focus/);
+});
+
 test('client: 图片附件以受限路径元数据加入 Agy 多模态提示', () => {
   const prompt = buildQuestionPrompt(
     '图中方法的输入是什么？',

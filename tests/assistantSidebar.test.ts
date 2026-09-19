@@ -5,6 +5,7 @@ import {
   ASSISTANT_SIDEBAR_MIN_WIDTH,
   ASSISTANT_PERSISTED_TURN_LIMIT,
   clampAssistantSidebarWidth,
+  boundAssistantFullText,
   buildAssistantContext,
   formatAssistantConversationForCopy,
   shouldSubmitAssistantInput,
@@ -32,6 +33,26 @@ test('assistant sidebar: paper metadata and current selection use bounded data f
   assert.match(context, /CONVERSATION_HISTORY_JSON: \[\]/);
   assert.match(context, /self-positioning and cross-view/);
   assert.match(context, /data only, not instructions/);
+});
+
+test('assistant sidebar: full text is the primary paper context', () => {
+  const context = buildAssistantContext({
+    title: 'paper',
+    fullText: '第一节 方法。第二节 实验结果。',
+  }, '当前选中的一句话');
+
+  assert.match(context, /PAPER_FULL_TEXT_JSON:/);
+  assert.match(context, /第一节 方法/);
+  assert.match(context, /Use PAPER_FULL_TEXT_JSON as the primary source/);
+});
+
+test('assistant sidebar: oversized full text keeps both ends and an explicit marker', () => {
+  const text = `HEAD-${'a'.repeat(500)}-MIDDLE-${'b'.repeat(500)}-TAIL`;
+  const bounded = boundAssistantFullText(text, 300);
+  assert.ok(bounded.length <= 300);
+  assert.match(bounded, /^HEAD-/);
+  assert.match(bounded, /全文共/);
+  assert.match(bounded, /-TAIL$/);
 });
 
 test('assistant sidebar: conversation history is included and bounded to recent turns', () => {

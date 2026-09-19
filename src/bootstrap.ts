@@ -24,6 +24,10 @@ let activeAssistantAbortController: any = null;
 const assistantSidebars = new WeakMap<Document, AssistantSidebarController>();
 const assistantSidebarControllers = new Set<AssistantSidebarController>();
 const assistantPaperRefreshTokens = new WeakMap<Document, number>();
+// Zotero 的全文索引按附件缓存；同一阅读器窗口反复打开助手时不要重复
+// 触发 PDF 提取。Map 只保留当前插件进程内的结果，不会把论文内容写入云端。
+const readerFullTextCache = new Map<number, string>();
+const readerFullTextInFlight = new Map<number, Promise<string>>();
 type AssistantLayoutState = {
   target: HTMLElement;
   originalRight: string;
@@ -335,6 +339,109 @@ function readItemTags(item: any): string[] {
   }
 }
 
+async function findReaderTextAttachment(item: any, paperItem: any): Promise<any | null> {
+  const candidates: any[] = [];
+  for (const candidate of [item, paperItem]) {
+    if (candidate?.isAttachment?.()) candidates.push(candidate);
+  }
+
+  const attachmentIDs = paperItem?.getAttachments?.() || [];
+  for (const attachmentID of attachmentIDs) {
+    try {
+      const attachment: any = await Zotero.Items.getAsync(attachmentID);
+      if (attachment?.isAttachment?.()) candidates.push(attachment);
+    } catch (_) {}
+  }
+
+  const withFile: any[] = [];
+  for (const candidate of candidates) {
+    try {
+      const filePath = await (candidate.getFilePathAsync
+        ? candidate.getFilePathAsync()
+        : candidate.getFilePath?.());
+      if (filePath) withFile.push(candidate);
+    } catch (_) {}
+  }
+  return withFile.find((candidate) => candidate.attachmentContentType === 'application/pdf') ||
+    withFile[0] || null;
+}
+
+function decodeZoteroText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object' && ArrayBuffer.isView(value)) {
+    try {
+      return new TextDecoder('utf-8').decode(new Uint8Array(
+        value.buffer,
+        value.byteOffset,
+        value.byteLength
+      ));
+    } catch (_) {}
+  }
+  if (value && typeof value === 'object' && value instanceof ArrayBuffer) {
+    try {
+      return new TextDecoder('utf-8').decode(new Uint8Array(value));
+    } catch (_) {}
+  }
+  return '';
+}
+
+async function readReaderFullText(attachment: any): Promise<string> {
+  const attachmentID = Number(attachment?.id);
+  if (!Number.isFinite(attachmentID) || attachmentID <= 0) return '';
+  const cached = readerFullTextCache.get(attachmentID);
+  if (cached !== undefined) return cached;
+  const existing = readerFullTextInFlight.get(attachmentID);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    try {
+      const fullTextAPI: any = (Zotero as any).FullText || (Zotero as any).Fulltext;
+      const zoteroFile: any = (Zotero as any).File;
+      if (!fullTextAPI || !zoteroFile?.getContentsAsync || !fullTextAPI.getItemCacheFile) return '';
+
+      // Zotero 默认可能只索引前若干页。先检查状态，不完整时显式要求完整提取，
+      // 这样 AI 助手不会把“已索引的前几页”误报成整篇论文。
+      let fullyIndexed: boolean | null = null;
+      if (typeof fullTextAPI.isFullyIndexed === 'function') {
+        try {
+          fullyIndexed = Boolean(await fullTextAPI.isFullyIndexed(attachment));
+        } catch (_) {}
+      }
+      if (fullyIndexed !== true && typeof fullTextAPI.indexItems === 'function') {
+        await fullTextAPI.indexItems([attachmentID], { complete: true, ignoreErrors: true });
+        if (typeof fullTextAPI.isFullyIndexed === 'function') {
+          try {
+            fullyIndexed = Boolean(await fullTextAPI.isFullyIndexed(attachment));
+          } catch (_) {}
+        } else {
+          // indexItems(..., { complete: true }) is the strongest API available
+          // on older Zotero builds when no state probe is exposed.
+          fullyIndexed = true;
+        }
+      }
+
+      const cacheFile = fullTextAPI.getItemCacheFile(attachment);
+      if (!cacheFile) return '';
+      if (typeof cacheFile.exists === 'function' && !(await Promise.resolve(cacheFile.exists()))) return '';
+      const raw = await Promise.resolve(zoteroFile.getContentsAsync(cacheFile, 'utf-8'));
+      const extracted = cleanPdfText(decodeZoteroText(raw));
+      const text = fullyIndexed === false
+        ? `[全文索引未确认完整，以下内容可能只覆盖部分页面]\n\n${extracted}`
+        : extracted;
+      readerFullTextCache.set(attachmentID, text);
+      return text;
+    } catch (err: any) {
+      Zotero.debug?.(`[Gemini Translator] 读取论文全文失败: ${err?.message || err}`);
+      readerFullTextCache.set(attachmentID, '');
+      return '';
+    } finally {
+      readerFullTextInFlight.delete(attachmentID);
+    }
+  })();
+  readerFullTextInFlight.set(attachmentID, pending);
+  return pending;
+}
+
 async function buildReaderPaperInfo(reader: any): Promise<AssistantPaperInfo> {
   const itemID = reader?.itemID;
   const item = itemID ? await Zotero.Items.getAsync(itemID) : null;
@@ -345,6 +452,8 @@ async function buildReaderPaperInfo(reader: any): Promise<AssistantPaperInfo> {
     const parent = await Zotero.Items.getAsync(item.parentItemID);
     if (parent) paperItem = parent;
   }
+  const textAttachment = await findReaderTextAttachment(item, paperItem);
+  const fullText = await readReaderFullText(textAttachment);
 
   let fileName = '';
   try {
@@ -363,6 +472,7 @@ async function buildReaderPaperInfo(reader: any): Promise<AssistantPaperInfo> {
     tags: readItemTags(paperItem),
     fileName,
     abstractNote: readItemField(paperItem, 'abstractNote'),
+    fullText,
   };
 }
 
@@ -697,6 +807,9 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 
         const config = loadConfig();
         const cache = getTranslationCache(config);
+        // 划词问答也复用当前阅读器的全文上下文。选区只负责定位用户
+        // 关注的段落；若常驻侧栏尚未创建，则安全回退到原来的选区问答。
+        const paperContext = assistantSidebars.get(doc)?.getContext() || cleanedText;
         let imageAttachments: ImageAttachment[] = [];
         try {
           imageAttachments = await prepareQuestionImages(imageFiles, config.endpointType);
@@ -707,7 +820,7 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
           return;
         }
 
-        const cacheKey = buildQuestionCacheKey(cleanedText, normalizedQuestion, config, imageAttachments);
+        const cacheKey = buildQuestionCacheKey(paperContext, normalizedQuestion, config, imageAttachments);
 
         controller?.setQuestionLoading(normalizedQuestion);
 
@@ -724,7 +837,7 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 
         try {
           await streamAsk(
-              cleanedText,
+              paperContext,
               normalizedQuestion,
               config,
               {
