@@ -30,9 +30,10 @@ test('config: DeepSeek 端点不会继续使用旧 Gemini 模型名', () => {
   });
   assert.equal(gemini.model, GEMINI_MODEL);
 
-  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-flash'), DEEPSEEK_MODEL);
-  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-v4-pro'), DEEPSEEK_MODEL);
-  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-reasoner'), 'deepseek-reasoner');
+  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-chat'), DEEPSEEK_MODEL);
+  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-reasoner'), DEEPSEEK_MODEL);
+  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-v4-flash'), DEEPSEEK_MODEL);
+  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-v4-pro'), 'deepseek-v4-pro');
 });
 
 test('config: 显式 Agy 首选项保持为插件可选端点', () => {

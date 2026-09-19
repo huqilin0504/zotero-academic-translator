@@ -29,7 +29,7 @@
 | 本机模型（agy） | 启动本机 `agy` CLI，并通过 `stream-json` 长连接通信 | `agy` 可执行文件、模型名 |
 | 本机 Ollama | OpenAI 兼容的 Ollama 地址 | Base URL、已下载的模型名 |
 
-当前默认值来自 [`src/defaults.json`](src/defaults.json)：DeepSeek、`https://api.deepseek.com`、模型 `deepseek-chat`、目标语言“简体中文”、KaTeX 开启、全文翻译并发数 6。
+当前默认值来自 [`src/defaults.json`](src/defaults.json)：DeepSeek、`https://api.deepseek.com`、模型 `deepseek-flash`、目标语言“简体中文”、KaTeX 开启、全文翻译并发数 6。
 
 全文 PDF 翻译沿用 pdf2zh 的本地段落缓存。只要源文本、服务、模型和翻译参数保持一致，重复翻译会复用 pdf2zh 的缓存数据库（由 pdf2zh 按系统用户缓存目录管理，Linux 默认位于 `~/.cache/pdf2zh/cache.v1.db`）；切换模型或修改提示词会按设计产生新的缓存键。插件划词/问答缓存则独立保存最近结果。
 

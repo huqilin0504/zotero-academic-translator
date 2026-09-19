@@ -126,7 +126,7 @@
     apiKey: "",
     deepseekApiKey: "",
     geminiApiKey: "",
-    model: "deepseek-chat",
+    model: "deepseek-flash",
     agyPath: "agy",
     targetLanguage: "\u7B80\u4F53\u4E2D\u6587",
     systemPrompt: "Academic translator. Directly translate scientific literature into fluent, accurate Simplified Chinese following strict rules:\n1. Formulas & Variables: Keep all LaTeX formulas and symbols intact. Use $...$ or \\( ... \\) for inline math and $$...$$ or \\[ ... \\] for display math. Preserve valid environments such as aligned, cases, matrix, and equation without translating their operators, variables, or alignment markers. Keep explanatory text outside math blocks.\n2. Source Fidelity: Preserve punctuation, citation markers, technical abbreviations, and semantic hyphens in compound terms (for example, self-positioning and cross-view). Only remove a hyphen when it is clearly an artificial line-wrap break; never concatenate words that were separated by a meaningful hyphen.\n3. Output Format: Output ONLY the translated content without any explanations, notes, or conversational filler.",
@@ -327,7 +327,12 @@
   var GEMINI_MODEL = "gemini-3.8-flash";
   var DEFAULT_SYSTEM_PROMPT = defaults_default.systemPrompt;
   var DEFAULT_CONFIG = { ...defaults_default };
-  var LEGACY_DEEPSEEK_MODELS = /* @__PURE__ */ new Set(["deepseek-flash", "deepseek-v4-pro"]);
+  var LEGACY_DEEPSEEK_MODELS = /* @__PURE__ */ new Set([
+    "deepseek-chat",
+    "deepseek-reasoner",
+    "deepseek-v4-flash",
+    "deepseek-v4-flash-vision-exp"
+  ]);
   var currentConfig = { ...DEFAULT_CONFIG };
   var PREF_PREFIX = "extensions.gemini-translator.";
   function normalizeModelForEndpoint(endpointType, model) {
@@ -840,11 +845,6 @@ ${userPrompt}` }];
       parts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.data } });
     }
     return parts;
-  }
-  function buildOpenAIChatCompletionsUrl(apiBaseUrl, endpointType) {
-    let base = String(apiBaseUrl || "").trim().replace(/\/+$/, "").replace(/\/chat\/completions$/i, "");
-    if (endpointType === "deepseek" && !/\/v1$/i.test(base)) base = `${base}/v1`;
-    return `${base}/chat/completions`;
   }
   function extractDeltaFromSSE(line, endpointType) {
     const trimmed = line.trim();
@@ -1479,7 +1479,7 @@ ${text2}`.trim().slice(-2e3);
     let bodyData;
     const endpointType = config.endpointType === "openai" || config.endpointType === "deepseek" ? "openai" : "gemini";
     if (endpointType === "openai") {
-      url = buildOpenAIChatCompletionsUrl(config.apiBaseUrl, config.endpointType);
+      url = `${url}/chat/completions`;
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
@@ -22348,7 +22348,7 @@ if __name__ == "__main__":
       mode: request.mode,
       endpointType: request.config.endpointType,
       apiBaseUrl: request.config.apiBaseUrl,
-      // 旧版 deepseek-flash 与当前 deepseek-chat 是同一条迁移路径；
+      // 旧版 chat/reasoner 与当前 deepseek-flash 是同一条迁移路径；
       // 统一后，重启或升级不会因为模型别名不同而错过同一输出任务的去重。
       model: normalizeModelForEndpoint(request.config.endpointType, request.config.model),
       targetLanguage: request.config.targetLanguage
@@ -22882,7 +22882,7 @@ if __name__ == "__main__":
     engineLabel.textContent = "\u7FFB\u8BD1\u5F15\u64CE";
     const engineValue = doc.createElement("div");
     engineValue.className = "gemini-readonly-value";
-    engineValue.textContent = config.endpointType === "deepseek" ? `DeepSeek API\uFF08${config.model || "deepseek-chat"}\uFF09` : config.endpointType === "gemini" ? "Gemini \u5B98\u65B9\u63A5\u53E3" : config.endpointType === "openai" ? "OpenAI \u517C\u5BB9\u63A5\u53E3" : "\u65E7\u7248\u672C\u673A Agy";
+    engineValue.textContent = config.endpointType === "deepseek" ? `DeepSeek API\uFF08${config.model || "deepseek-flash"}\uFF09` : config.endpointType === "gemini" ? "Gemini \u5B98\u65B9\u63A5\u53E3" : config.endpointType === "openai" ? "OpenAI \u517C\u5BB9\u63A5\u53E3" : "\u65E7\u7248\u672C\u673A Agy";
     engineRow.appendChild(engineLabel);
     engineRow.appendChild(engineValue);
     const modeRow = doc.createElement("div");
@@ -22987,9 +22987,9 @@ if __name__ == "__main__":
     const endpoint = String(config.endpointType || "").trim().toLowerCase();
     const apiKey = String(config.apiKey || "").trim();
     if (endpoint === "deepseek") {
-      const base = cleanBaseUrl(config.apiBaseUrl, DEFAULT_DEEPSEEK_BASE_URL).replace(/\/v1$/i, "");
+      const base = cleanBaseUrl(config.apiBaseUrl, DEFAULT_DEEPSEEK_BASE_URL);
       return {
-        url: `${base}/v1/models`,
+        url: `${base}/models`,
         headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
       };
     }

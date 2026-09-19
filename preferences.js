@@ -4,7 +4,7 @@
   const PREF_KEY = 'extensions.gemini-translator.config';
   const SHARED_DEFAULTS = globalThis.GeminiTranslatorDefaults || {};
   const DEEPSEEK_API_BASE_URL = SHARED_DEFAULTS.apiBaseUrl || 'https://api.deepseek.com';
-  const DEEPSEEK_MODEL = SHARED_DEFAULTS.model || 'deepseek-chat';
+  const DEEPSEEK_MODEL = SHARED_DEFAULTS.model || 'deepseek-flash';
   const GEMINI_MODEL = 'gemini-3.8-flash';
   const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com';
   const DEFAULTS = Object.assign({}, SHARED_DEFAULTS);
@@ -34,7 +34,7 @@
     if (!normalized.deepseekApiKey && endpoint === 'deepseek') normalized.deepseekApiKey = legacyKey;
     if (!normalized.geminiApiKey && endpoint === 'gemini') normalized.geminiApiKey = legacyKey;
     normalized.apiKey = providerApiKey(normalized, endpoint);
-    if (endpoint === 'deepseek' && /^(deepseek-flash|deepseek-v4-pro)$/i.test(String(normalized.model || '').trim())) {
+    if (endpoint === 'deepseek' && /^(deepseek-chat|deepseek-reasoner|deepseek-v4-flash|deepseek-v4-flash-vision-exp)$/i.test(String(normalized.model || '').trim())) {
       normalized.model = DEEPSEEK_MODEL;
     }
     return normalized;
@@ -44,8 +44,8 @@
   // 本地 Ollama/Agy 的用户被静态列表限制；DeepSeek/Gemini 列表来自各自官方模型目录。
   const MODEL_CATALOG = {
     deepseek: [
-      { value: 'deepseek-chat', label: 'deepseek-chat（快速 / 通用）' },
-      { value: 'deepseek-reasoner', label: 'deepseek-reasoner（深度推理）' },
+      { value: 'deepseek-flash', label: 'deepseek-flash（快速 / 多模态）' },
+      { value: 'deepseek-v4-pro', label: 'deepseek-v4-pro（高质量 / 推理）' },
     ],
     gemini: [
       { value: 'gemini-3.8-flash', label: 'gemini-3.8-flash（稳定 / 快速）' },

@@ -53,10 +53,9 @@ function requestFor(config: ModelCatalogRequest): { url: string; headers: Record
   const endpoint = String(config.endpointType || '').trim().toLowerCase();
   const apiKey = String(config.apiKey || '').trim();
   if (endpoint === 'deepseek') {
-    const base = cleanBaseUrl(config.apiBaseUrl, DEFAULT_DEEPSEEK_BASE_URL)
-      .replace(/\/v1$/i, '');
+    const base = cleanBaseUrl(config.apiBaseUrl, DEFAULT_DEEPSEEK_BASE_URL);
     return {
-      url: `${base}/v1/models`,
+      url: `${base}/models`,
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
     };
   }

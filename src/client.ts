@@ -100,15 +100,6 @@ function buildGeminiParts(
   return parts;
 }
 
-function buildOpenAIChatCompletionsUrl(apiBaseUrl: string, endpointType: PluginConfig['endpointType']): string {
-  let base = String(apiBaseUrl || '').trim().replace(/\/+$/, '')
-    .replace(/\/chat\/completions$/i, '');
-  // DeepSeek 的设置页故意显示不带版本号的官方根地址；其兼容接口实际
-  // 位于 /v1/chat/completions。已填写 /v1 的代理地址不重复追加。
-  if (endpointType === 'deepseek' && !/\/v1$/i.test(base)) base = `${base}/v1`;
-  return `${base}/chat/completions`;
-}
-
 /**
  * 解析单行 SSE 数据，提取增量文本
  */
@@ -924,7 +915,7 @@ async function streamChatPrompt(
     : 'gemini';
 
   if (endpointType === 'openai') {
-    url = buildOpenAIChatCompletionsUrl(config.apiBaseUrl, config.endpointType);
+    url = `${url}/chat/completions`;
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }

@@ -58,7 +58,7 @@ export function openDocTranslateModal(
   const engineValue = doc.createElement('div');
   engineValue.className = 'gemini-readonly-value';
   engineValue.textContent = config.endpointType === 'deepseek'
-    ? `DeepSeek API（${config.model || 'deepseek-chat'}）`
+    ? `DeepSeek API（${config.model || 'deepseek-flash'}）`
     : config.endpointType === 'gemini'
       ? 'Gemini 官方接口'
       : config.endpointType === 'openai'

@@ -208,7 +208,7 @@ test('docTranslator: DeepSeek 配置路由到 pdf2zh 的 deepseek 服务', () =>
   const env = buildPdf2zhEnvironment({ inputPdfPath: '/tmp/paper.pdf' }, config);
   assert.deepEqual(env, {
     DEEPSEEK_API_KEY: 'deepseek-test-key',
-    DEEPSEEK_MODEL: 'deepseek-chat',
+    DEEPSEEK_MODEL: 'deepseek-flash',
   });
 
   const args = buildPdf2zhArgs({ inputPdfPath: '/tmp/paper.pdf' }, config);
@@ -221,13 +221,13 @@ test('docTranslator: DeepSeek 自定义兼容地址改走 OpenAI 服务并传入
     endpointType: 'deepseek',
     apiBaseUrl: 'https://proxy.example.test',
     deepseekApiKey: 'deepseek-test-key',
-    model: 'deepseek-chat',
+    model: 'deepseek-flash',
   };
   const env = buildPdf2zhEnvironment({ inputPdfPath: '/tmp/paper.pdf' }, config);
   assert.deepEqual(env, {
     OPENAI_BASE_URL: 'https://proxy.example.test/v1',
     OPENAI_API_KEY: 'deepseek-test-key',
-    OPENAI_MODEL: 'deepseek-chat',
+    OPENAI_MODEL: 'deepseek-flash',
   });
   const args = buildPdf2zhArgs({ inputPdfPath: '/tmp/paper.pdf' }, config);
   assert.equal(args[args.indexOf('--service') + 1], 'openai');

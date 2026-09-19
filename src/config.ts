@@ -10,10 +10,14 @@ export const DEFAULT_SYSTEM_PROMPT = sharedDefaults.systemPrompt;
 
 export const DEFAULT_CONFIG: PluginConfig = { ...sharedDefaults } as PluginConfig;
 
-// 这些名称曾经由设置页的内置提示使用，但不是 DeepSeek API 的稳定模型 ID。
-// 统一归一到当前默认模型，避免旧配置继续传给 pdf2zh 后被重试器包装成
-// “do = self.iter(...)”这类无用错误。
-const LEGACY_DEEPSEEK_MODELS = new Set(['deepseek-flash', 'deepseek-v4-pro']);
+// 这些名称曾经由旧版 API 使用，当前 DeepSeek API 已统一到 Flash/Pro
+// 模型名。保留兼容迁移，但不改写当前仍有效的 deepseek-v4-pro。
+const LEGACY_DEEPSEEK_MODELS = new Set([
+  'deepseek-chat',
+  'deepseek-reasoner',
+  'deepseek-v4-flash',
+  'deepseek-v4-flash-vision-exp',
+]);
 
 let currentConfig: PluginConfig = { ...DEFAULT_CONFIG };
 

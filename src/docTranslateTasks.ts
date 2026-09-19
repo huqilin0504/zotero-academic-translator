@@ -81,7 +81,7 @@ function taskFingerprint(request: DocumentTranslationTaskRequest): string {
     mode: request.mode,
     endpointType: request.config.endpointType,
     apiBaseUrl: request.config.apiBaseUrl,
-    // 旧版 deepseek-flash 与当前 deepseek-chat 是同一条迁移路径；
+    // 旧版 chat/reasoner 与当前 deepseek-flash 是同一条迁移路径；
     // 统一后，重启或升级不会因为模型别名不同而错过同一输出任务的去重。
     model: normalizeModelForEndpoint(request.config.endpointType, request.config.model),
     targetLanguage: request.config.targetLanguage,

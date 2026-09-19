@@ -35,7 +35,7 @@ export interface PluginConfig {
   deepseekApiKey?: string;
   /** Gemini 专用密钥；切换到本地端点时不会发送 */
   geminiApiKey?: string;
-  /** 模型名称，例如 deepseek-chat, gemini-3.8-flash-low 或 gemma2 */
+  /** 模型名称，例如 deepseek-flash, gemini-3.8-flash-low 或 gemma2 */
   model: string;
   /** agy 执行路径或 PATH 中的命令名，默认使用 agy */
   agyPath?: string;
