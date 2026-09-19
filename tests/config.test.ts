@@ -6,11 +6,12 @@ import {
   DEFAULT_CONFIG,
   GEMINI_MODEL,
   getApiKeyForEndpoint,
+  normalizeModelForEndpoint,
   normalizeConfig,
   stripApiKeysForStorage,
 } from '../src/config';
 
-test('config: 默认端点为 DeepSeek Flash 而不是本机 Agy', () => {
+test('config: 默认端点为 DeepSeek API 而不是本机 Agy', () => {
   assert.equal(DEFAULT_CONFIG.endpointType, 'deepseek');
   assert.equal(DEFAULT_CONFIG.apiBaseUrl, DEEPSEEK_API_BASE_URL);
   assert.equal(DEFAULT_CONFIG.model, DEEPSEEK_MODEL);
@@ -28,6 +29,10 @@ test('config: DeepSeek 端点不会继续使用旧 Gemini 模型名', () => {
     model: 'deepseek-flash',
   });
   assert.equal(gemini.model, GEMINI_MODEL);
+
+  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-flash'), DEEPSEEK_MODEL);
+  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-v4-pro'), DEEPSEEK_MODEL);
+  assert.equal(normalizeModelForEndpoint('deepseek', 'deepseek-reasoner'), 'deepseek-reasoner');
 });
 
 test('config: 显式 Agy 首选项保持为插件可选端点', () => {

@@ -126,7 +126,7 @@
     apiKey: "",
     deepseekApiKey: "",
     geminiApiKey: "",
-    model: "deepseek-flash",
+    model: "deepseek-chat",
     agyPath: "agy",
     targetLanguage: "\u7B80\u4F53\u4E2D\u6587",
     systemPrompt: "Academic translator. Directly translate scientific literature into fluent, accurate Simplified Chinese following strict rules:\n1. Formulas & Variables: Keep all LaTeX formulas and symbols intact. Use $...$ or \\( ... \\) for inline math and $$...$$ or \\[ ... \\] for display math. Preserve valid environments such as aligned, cases, matrix, and equation without translating their operators, variables, or alignment markers. Keep explanatory text outside math blocks.\n2. Source Fidelity: Preserve punctuation, citation markers, technical abbreviations, and semantic hyphens in compound terms (for example, self-positioning and cross-view). Only remove a hyphen when it is clearly an artificial line-wrap break; never concatenate words that were separated by a meaningful hyphen.\n3. Output Format: Output ONLY the translated content without any explanations, notes, or conversational filler.",
@@ -327,8 +327,16 @@
   var GEMINI_MODEL = "gemini-3.8-flash";
   var DEFAULT_SYSTEM_PROMPT = defaults_default.systemPrompt;
   var DEFAULT_CONFIG = { ...defaults_default };
+  var LEGACY_DEEPSEEK_MODELS = /* @__PURE__ */ new Set(["deepseek-flash", "deepseek-v4-pro"]);
   var currentConfig = { ...DEFAULT_CONFIG };
   var PREF_PREFIX = "extensions.gemini-translator.";
+  function normalizeModelForEndpoint(endpointType, model) {
+    const normalized = String(model || "").trim();
+    if (String(endpointType || "").trim().toLowerCase() === "deepseek" && LEGACY_DEEPSEEK_MODELS.has(normalized.toLowerCase())) {
+      return DEEPSEEK_MODEL;
+    }
+    return normalized;
+  }
   function stripApiKeysForStorage(config) {
     return {
       ...config,
@@ -379,6 +387,7 @@
     } else if (merged.endpointType === "gemini" && /^(deepseek-|qwen|llama|ollama|gpt-|claude|agy-)/.test(model)) {
       merged.model = GEMINI_MODEL;
     }
+    merged.model = normalizeModelForEndpoint(merged.endpointType, merged.model);
     return merged;
   }
   function getApiKeyForEndpoint(config) {
@@ -831,6 +840,11 @@ ${userPrompt}` }];
       parts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.data } });
     }
     return parts;
+  }
+  function buildOpenAIChatCompletionsUrl(apiBaseUrl, endpointType) {
+    let base = String(apiBaseUrl || "").trim().replace(/\/+$/, "").replace(/\/chat\/completions$/i, "");
+    if (endpointType === "deepseek" && !/\/v1$/i.test(base)) base = `${base}/v1`;
+    return `${base}/chat/completions`;
   }
   function extractDeltaFromSSE(line, endpointType) {
     const trimmed = line.trim();
@@ -1465,12 +1479,12 @@ ${text2}`.trim().slice(-2e3);
     let bodyData;
     const endpointType = config.endpointType === "openai" || config.endpointType === "deepseek" ? "openai" : "gemini";
     if (endpointType === "openai") {
-      url = `${url}/chat/completions`;
+      url = buildOpenAIChatCompletionsUrl(config.apiBaseUrl, config.endpointType);
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
       bodyData = {
-        model: config.model,
+        model: normalizeModelForEndpoint(config.endpointType, config.model),
         stream: true,
         messages: [
           { role: "system", content: systemPrompt },
@@ -1482,7 +1496,7 @@ ${text2}`.trim().slice(-2e3);
         bodyData.thinking = thinkingMode === "high" ? { type: "enabled", reasoning_effort: "high" } : { type: "disabled" };
       }
     } else {
-      url = `${url}/v1beta/models/${encodeURIComponent(config.model)}:streamGenerateContent?alt=sse`;
+      url = `${url}/v1beta/models/${encodeURIComponent(normalizeModelForEndpoint(config.endpointType, config.model))}:streamGenerateContent?alt=sse`;
       if (apiKey) {
         headers["x-goog-api-key"] = apiKey;
       }
@@ -21795,9 +21809,20 @@ if __name__ == "__main__":
   }
 
   // src/docTranslator.ts
+  function isOfficialDeepSeekBaseUrl(value) {
+    const normalized = String(value || DEEPSEEK_API_BASE_URL).trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+    return /^https:\/\/api\.deepseek\.com$/i.test(normalized);
+  }
+  function openAICompatibleBaseUrl(value) {
+    const normalized = String(value || "").trim().replace(/\/+$/, "");
+    if (!normalized) return normalized;
+    return /\/v1$/i.test(normalized) ? normalized : `${normalized}/v1`;
+  }
   function resolveDocumentService(options, config) {
     if (options.service) return options.service;
-    if (config.endpointType === "deepseek") return "deepseek";
+    if (config.endpointType === "deepseek") {
+      return isOfficialDeepSeekBaseUrl(config.apiBaseUrl) ? "deepseek" : "openai";
+    }
     if (config.endpointType === "gemini") return "gemini";
     if (config.endpointType === "openai") return "openai";
     return "agy";
@@ -21813,14 +21838,22 @@ if __name__ == "__main__":
     } else if (service === "deepseek") {
       const apiKey = getApiKeyForEndpoint(config);
       if (apiKey) environment.DEEPSEEK_API_KEY = apiKey;
-      if (config.model) environment.DEEPSEEK_MODEL = config.model;
+      const model = normalizeModelForEndpoint("deepseek", config.model);
+      if (model) environment.DEEPSEEK_MODEL = model;
     } else if (service === "gemini") {
       const apiKey = getApiKeyForEndpoint(config);
       if (apiKey) environment.GEMINI_API_KEY = apiKey;
       if (config.model) environment.GEMINI_MODEL = config.model;
     } else if (service === "openai") {
-      if (config.apiBaseUrl) environment.OPENAI_BASE_URL = config.apiBaseUrl;
-      if (config.model) environment.OPENAI_MODEL = config.model;
+      if (config.apiBaseUrl) {
+        environment.OPENAI_BASE_URL = config.endpointType === "deepseek" ? openAICompatibleBaseUrl(config.apiBaseUrl) : config.apiBaseUrl;
+      }
+      if (config.endpointType === "deepseek") {
+        const apiKey = getApiKeyForEndpoint(config);
+        if (apiKey) environment.OPENAI_API_KEY = apiKey;
+      }
+      const model = normalizeModelForEndpoint(config.endpointType, config.model);
+      if (model) environment.OPENAI_MODEL = model;
     } else if (service === "ollama") {
       if (config.apiBaseUrl) environment.OLLAMA_HOST = config.apiBaseUrl.replace(/\/v1\/?$/, "");
       if (config.model) environment.OLLAMA_MODEL = config.model;
@@ -21987,11 +22020,32 @@ if __name__ == "__main__":
       const line = rawLine.replace(ansi, "").trim();
       if (!line) continue;
       lines.push(line);
-      if (lines.length > 20) lines.shift();
+      if (lines.length > 80) lines.shift();
     }
   }
+  function sanitizeProcessDiagnostic(line) {
+    return line.replace(/(Bearer\s+)[^\s,]+/gi, "$1***").replace(/((?:api[-_ ]?key|DEEPSEEK_API_KEY|OPENAI_API_KEY|GEMINI_API_KEY)\s*[:=]\s*)("[^"]*"|'[^']*'|[^,\s}]+)/gi, "$1***");
+  }
+  function diagnosticScore(line) {
+    let score = 0;
+    if (/(?:Error code:|HTTP\/\d(?:\.\d)?\s+[45]\d\d|\b[45]\d\d\b)/i.test(line)) score += 100;
+    if (/(?:authentication|api[-_ ]?key|invalid|model|rate.?limit|quota|context length|insufficient)/i.test(line)) score += 60;
+    if (/\bERROR\b/i.test(line)) score += 20;
+    if (/\b(?:error|exception|failed)\b/i.test(line)) score += 10;
+    return score;
+  }
   function formatProcessExit(prefix, code, diagnostics) {
-    const detail = diagnostics.slice(-8).join(" ").slice(-1600);
+    const normalized = diagnostics.map(sanitizeProcessDiagnostic).filter(Boolean);
+    let best = "";
+    let bestScore = 0;
+    for (const line of normalized) {
+      const score = diagnosticScore(line);
+      if (score >= bestScore) {
+        best = line;
+        bestScore = score;
+      }
+    }
+    const detail = (best || normalized.slice(-8).join(" ")).slice(-1600);
     return `${prefix} (\u4EE3\u7801 ${code})${detail ? `\uFF1A${detail}` : ""}`;
   }
   function buildPdf2zhArgs(options, config) {
@@ -22082,7 +22136,7 @@ if __name__ == "__main__":
     const Subprocess = getSubprocess();
     if (Subprocess?.call) {
       let proc;
-      const stderrDiagnostics = [];
+      const processDiagnostics = [];
       try {
         proc = await Subprocess.call({
           command: pdf2zhBin,
@@ -22120,20 +22174,20 @@ if __name__ == "__main__":
             const split = splitProcessOutput(buffer, chunk);
             buffer = split.remainder;
             for (const line of split.lines) {
-              if (captureDiagnostics) appendProcessDiagnostic(stderrDiagnostics, line);
+              if (captureDiagnostics) appendProcessDiagnostic(processDiagnostics, line);
               const progress = parsePdf2zhProgress(line);
               emitPdf2zhProgress(options, progress);
             }
           }
           if (buffer) {
-            if (captureDiagnostics) appendProcessDiagnostic(stderrDiagnostics, buffer);
+            if (captureDiagnostics) appendProcessDiagnostic(processDiagnostics, buffer);
             const progress = parsePdf2zhProgress(buffer);
             emitPdf2zhProgress(options, progress);
           }
         } catch (_) {
         }
       };
-      const stdoutReader = readStream(proc.stdout);
+      const stdoutReader = readStream(proc.stdout, true);
       const stderrReader = readStream(proc.stderr, true);
       const { exitCode } = await proc.wait();
       await Promise.allSettled([stdoutReader, stderrReader]);
@@ -22141,7 +22195,7 @@ if __name__ == "__main__":
         throw documentError(options, "\u7528\u6237\u5DF2\u53D6\u6D88\u5168\u6587\u7FFB\u8BD1\u4EFB\u52A1");
       }
       if (exitCode !== 0) {
-        throw documentError(options, formatProcessExit("\u6392\u7248\u7FFB\u8BD1\u5F15\u64CE\u9000\u51FA", exitCode, stderrDiagnostics));
+        throw documentError(options, formatProcessExit("\u6392\u7248\u7FFB\u8BD1\u5F15\u64CE\u9000\u51FA", exitCode, processDiagnostics));
       }
       const monoPdfPath = getExpectedOutputPdfPath(options.inputPdfPath, "mono", options.outputDir);
       const dualPdfPath = getExpectedOutputPdfPath(options.inputPdfPath, "dual", options.outputDir);
@@ -22165,7 +22219,7 @@ if __name__ == "__main__":
       const nodeCp = "node:child_process";
       const childProcess = await import(nodeCp);
       return new Promise((resolve, reject) => {
-        const stderrDiagnostics = [];
+        const processDiagnostics = [];
         let stdoutBuffer = "";
         let stderrBuffer = "";
         const cp = childProcess.spawn(pdf2zhBin, args, {
@@ -22183,14 +22237,14 @@ if __name__ == "__main__":
           const text2 = data.toString("utf-8");
           const split = splitProcessOutput(buffer, text2);
           for (const line of split.lines) {
-            if (captureDiagnostics) appendProcessDiagnostic(stderrDiagnostics, line);
+            if (captureDiagnostics) appendProcessDiagnostic(processDiagnostics, line);
             const progress = parsePdf2zhProgress(line);
             emitPdf2zhProgress(options, progress);
           }
           return split.remainder;
         };
         cp.stdout.on("data", (data) => {
-          stdoutBuffer = handleData(data, stdoutBuffer);
+          stdoutBuffer = handleData(data, stdoutBuffer, true);
         });
         cp.stderr.on("data", (data) => {
           stderrBuffer = handleData(data, stderrBuffer, true);
@@ -22201,7 +22255,7 @@ if __name__ == "__main__":
             emitPdf2zhProgress(options, progress);
           }
           if (stderrBuffer) {
-            appendProcessDiagnostic(stderrDiagnostics, stderrBuffer);
+            appendProcessDiagnostic(processDiagnostics, stderrBuffer);
             const progress = parsePdf2zhProgress(stderrBuffer);
             emitPdf2zhProgress(options, progress);
           }
@@ -22210,7 +22264,7 @@ if __name__ == "__main__":
             return;
           }
           if (code !== 0) {
-            reject(documentError(options, formatProcessExit("\u6392\u7248\u7FFB\u8BD1\u5F15\u64CE\u8FDB\u7A0B\u9000\u51FA", code, stderrDiagnostics)));
+            reject(documentError(options, formatProcessExit("\u6392\u7248\u7FFB\u8BD1\u5F15\u64CE\u8FDB\u7A0B\u9000\u51FA", code, processDiagnostics)));
             return;
           }
           const monoPdfPath = getExpectedOutputPdfPath(options.inputPdfPath, "mono", options.outputDir);
@@ -22294,7 +22348,9 @@ if __name__ == "__main__":
       mode: request.mode,
       endpointType: request.config.endpointType,
       apiBaseUrl: request.config.apiBaseUrl,
-      model: request.config.model,
+      // 旧版 deepseek-flash 与当前 deepseek-chat 是同一条迁移路径；
+      // 统一后，重启或升级不会因为模型别名不同而错过同一输出任务的去重。
+      model: normalizeModelForEndpoint(request.config.endpointType, request.config.model),
       targetLanguage: request.config.targetLanguage
     });
   }
@@ -22826,7 +22882,7 @@ if __name__ == "__main__":
     engineLabel.textContent = "\u7FFB\u8BD1\u5F15\u64CE";
     const engineValue = doc.createElement("div");
     engineValue.className = "gemini-readonly-value";
-    engineValue.textContent = config.endpointType === "deepseek" ? "DeepSeek Flash\uFF08\u591A\u6A21\u6001\uFF09" : config.endpointType === "gemini" ? "Gemini \u5B98\u65B9\u63A5\u53E3" : config.endpointType === "openai" ? "OpenAI \u517C\u5BB9\u63A5\u53E3" : "\u65E7\u7248\u672C\u673A Agy";
+    engineValue.textContent = config.endpointType === "deepseek" ? `DeepSeek API\uFF08${config.model || "deepseek-chat"}\uFF09` : config.endpointType === "gemini" ? "Gemini \u5B98\u65B9\u63A5\u53E3" : config.endpointType === "openai" ? "OpenAI \u517C\u5BB9\u63A5\u53E3" : "\u65E7\u7248\u672C\u673A Agy";
     engineRow.appendChild(engineLabel);
     engineRow.appendChild(engineValue);
     const modeRow = doc.createElement("div");
@@ -22931,9 +22987,9 @@ if __name__ == "__main__":
     const endpoint = String(config.endpointType || "").trim().toLowerCase();
     const apiKey = String(config.apiKey || "").trim();
     if (endpoint === "deepseek") {
-      const base = cleanBaseUrl(config.apiBaseUrl, DEFAULT_DEEPSEEK_BASE_URL);
+      const base = cleanBaseUrl(config.apiBaseUrl, DEFAULT_DEEPSEEK_BASE_URL).replace(/\/v1$/i, "");
       return {
-        url: `${base}/models`,
+        url: `${base}/v1/models`,
         headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
       };
     }
@@ -23041,6 +23097,7 @@ if __name__ == "__main__":
   var menuItemElements = [];
   var translationCache = new LRUCache(500);
   var translationCacheCapacity = 500;
+  var translationInFlight = /* @__PURE__ */ new Map();
   var TRANSLATION_HISTORY_STORAGE_KEY = "extensions.gemini-translator.translation-history";
   var MAX_PERSISTED_TRANSLATIONS = 80;
   var MAX_PERSISTED_TRANSLATION_TEXT_LENGTH = 24e3;
@@ -23178,7 +23235,7 @@ if __name__ == "__main__":
       text: text2,
       endpointType: config.endpointType,
       apiBaseUrl: config.apiBaseUrl,
-      model: config.model,
+      model: normalizeModelForEndpoint(config.endpointType, config.model),
       targetLanguage: config.targetLanguage,
       systemPrompt: config.systemPrompt
     });
@@ -23190,7 +23247,7 @@ if __name__ == "__main__":
       question,
       endpointType: config.endpointType,
       apiBaseUrl: config.apiBaseUrl,
-      model: config.model,
+      model: normalizeModelForEndpoint(config.endpointType, config.model),
       targetLanguage: config.targetLanguage,
       images: imageAttachments.map((image) => ({
         name: image.name,
@@ -23612,6 +23669,19 @@ if __name__ == "__main__":
             controller?.setDone(cached, true, config.enableKaTeX);
             return;
           }
+          const existingRequest = translationInFlight.get(cacheKey);
+          if (existingRequest) {
+            controller?.setLoading();
+            try {
+              const translated = await existingRequest;
+              controller?.setDone(translated, true, config.enableKaTeX);
+            } catch (err) {
+              controller?.setError(err?.message || "\u7FFB\u8BD1\u8BF7\u6C42\u5931\u8D25", () => {
+                void doRequest();
+              });
+            }
+            return;
+          }
           if (activeAbortController) {
             try {
               activeAbortController.abort();
@@ -23623,38 +23693,47 @@ if __name__ == "__main__":
           const abortController = new AbortControllerClass();
           activeAbortController = abortController;
           controller?.setLoading();
-          try {
-            await streamTranslate(
-              cleanedText,
-              config,
-              {
-                onStart: () => {
-                  controller?.setLoading();
-                },
-                onChunk: (_, accumulated) => {
-                  controller?.setStreaming(accumulated);
-                },
-                onDone: (fullText) => {
-                  setCachedText(cache, cacheKey, fullText, doc);
-                  controller?.setDone(fullText, false, config.enableKaTeX);
-                  if (activeAbortController === abortController) {
-                    activeAbortController = null;
-                  }
-                },
-                onError: (err) => {
-                  if (abortController.signal.aborted) return;
-                  controller?.setError(err.message, () => {
-                    doRequest();
-                  });
-                  if (activeAbortController === abortController) {
-                    activeAbortController = null;
-                  }
+          const pendingRequest = streamTranslate(
+            cleanedText,
+            config,
+            {
+              onStart: () => {
+                controller?.setLoading();
+              },
+              onChunk: (_, accumulated) => {
+                controller?.setStreaming(accumulated);
+              },
+              onDone: (fullText) => {
+                setCachedText(cache, cacheKey, fullText, doc);
+                controller?.setDone(fullText, false, config.enableKaTeX);
+                if (activeAbortController === abortController) {
+                  activeAbortController = null;
                 }
               },
-              abortController.signal,
-              doc
-            );
+              onError: (err) => {
+                if (abortController.signal.aborted) return;
+                if (translationInFlight.get(cacheKey) === pendingRequest) {
+                  translationInFlight.delete(cacheKey);
+                }
+                controller?.setError(err.message, () => {
+                  doRequest();
+                });
+                if (activeAbortController === abortController) {
+                  activeAbortController = null;
+                }
+              }
+            },
+            abortController.signal,
+            doc
+          );
+          translationInFlight.set(cacheKey, pendingRequest);
+          try {
+            await pendingRequest;
           } catch (_) {
+          } finally {
+            if (translationInFlight.get(cacheKey) === pendingRequest) {
+              translationInFlight.delete(cacheKey);
+            }
           }
         };
         controller = createTranslationCard(doc, {

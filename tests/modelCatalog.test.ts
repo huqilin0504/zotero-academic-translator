@@ -7,7 +7,7 @@ function listen(server: http.Server): Promise<number> {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve((server.address() as any).port)));
 }
 
-test('model catalog: DeepSeek 通过 /models 和 Bearer Key 读取模型', async () => {
+test('model catalog: DeepSeek 通过 /v1/models 和 Bearer Key 读取模型', async () => {
   let receivedAuthorization = '';
   let receivedPath = '';
   const server = http.createServer((request, response) => {
@@ -31,7 +31,7 @@ test('model catalog: DeepSeek 通过 /models 和 Bearer Key 读取模型', async
     });
     assert.equal(result.available, true);
     assert.deepEqual(result.models.map((model) => model.value), ['deepseek-flash', 'deepseek-v4-pro']);
-    assert.equal(receivedPath, '/models');
+    assert.equal(receivedPath, '/v1/models');
     assert.equal(receivedAuthorization, 'Bearer deepseek-test-key');
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));

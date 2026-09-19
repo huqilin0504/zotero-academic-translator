@@ -5,17 +5,17 @@
   onload="Zotero.GeminiTranslatorPreferences.init();">
   <html:div class="gemini-prefs-intro">
     <html:h1>文献翻译</html:h1>
-    <html:p>划词、图片问答和全文 PDF 都使用这里选择的接口与模型。默认使用 DeepSeek Flash，多模态图片直接通过 API 发送。</html:p>
+    <html:p>划词、图片问答和全文 PDF 都使用这里选择的接口与模型。默认使用 DeepSeek API，多模态图片直接通过 API 发送。</html:p>
   </html:div>
 
   <groupbox class="gemini-prefs-group">
     <label><html:h2>翻译引擎</html:h2></label>
-    <html:p class="gemini-prefs-description">DeepSeek Flash 支持图片输入；翻译请求关闭思考以降低首字延迟，划词问答保留 high 思考强度。DeepSeek 和 Gemini 均需要填写对应 API Key。</html:p>
+    <html:p class="gemini-prefs-description">DeepSeek API 支持图片输入；翻译请求关闭思考以降低首字延迟，划词问答保留 high 思考强度。DeepSeek 和 Gemini 均需要填写对应 API Key。</html:p>
 
     <hbox class="gemini-prefs-row" align="center">
       <label value="引擎模式" />
       <html:select id="gemini-translator-endpoint-type" class="gemini-prefs-control" aria-label="引擎模式">
-        <html:option value="deepseek">DeepSeek Flash（官方多模态）</html:option>
+        <html:option value="deepseek">DeepSeek API（官方多模态）</html:option>
         <html:option value="agy">本机模型（agy）</html:option>
         <html:option value="ollama">本机 Ollama（兼容接口）</html:option>
         <html:option value="gemini">Gemini 官方接口（云端）</html:option>

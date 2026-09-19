@@ -1,6 +1,6 @@
 import { cleanPdfText } from './cleaner';
 import { LRUCache } from './lruCache';
-import { loadConfig } from './config';
+import { loadConfig, normalizeModelForEndpoint } from './config';
 import { streamAsk, streamTranslate, syncAgySession, shutdownAgySession } from './client';
 import { createTranslationCard } from './ui';
 import { AssistantPaperInfo, AssistantSidebarController, createAssistantSidebar } from './assistantSidebar';
@@ -37,6 +37,10 @@ const assistantLayouts = new WeakMap<Document, AssistantLayoutState>();
 const menuItemElements: any[] = [];
 let translationCache = new LRUCache<string, string>(500);
 let translationCacheCapacity = 500;
+// 同一选区在首个 API 请求尚未完成时可能被多个阅读器窗口同时触发。
+// 共享进行中的 Promise，避免重复消耗一次 API 配额；完成后结果仍会写入
+// 内存与持久化缓存，后续请求直接命中。
+const translationInFlight = new Map<string, Promise<string>>();
 const TRANSLATION_HISTORY_STORAGE_KEY = 'extensions.gemini-translator.translation-history';
 const MAX_PERSISTED_TRANSLATIONS = 80;
 const MAX_PERSISTED_TRANSLATION_TEXT_LENGTH = 24000;
@@ -206,7 +210,7 @@ function buildTranslationCacheKey(text: string, config: ReturnType<typeof loadCo
     text,
     endpointType: config.endpointType,
     apiBaseUrl: config.apiBaseUrl,
-    model: config.model,
+    model: normalizeModelForEndpoint(config.endpointType, config.model),
     targetLanguage: config.targetLanguage,
     systemPrompt: config.systemPrompt,
   });
@@ -224,7 +228,7 @@ function buildQuestionCacheKey(
     question,
     endpointType: config.endpointType,
     apiBaseUrl: config.apiBaseUrl,
-    model: config.model,
+    model: normalizeModelForEndpoint(config.endpointType, config.model),
     targetLanguage: config.targetLanguage,
     images: imageAttachments.map((image) => ({
       name: image.name,
@@ -739,6 +743,20 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
           return;
         }
 
+        const existingRequest = translationInFlight.get(cacheKey);
+        if (existingRequest) {
+          controller?.setLoading();
+          try {
+            const translated = await existingRequest;
+            controller?.setDone(translated, true, config.enableKaTeX);
+          } catch (err: any) {
+            controller?.setError(err?.message || '翻译请求失败', () => {
+              void doRequest();
+            });
+          }
+          return;
+        }
+
         // 中断上一次未完成的翻译请求
         if (activeAbortController) {
           try {
@@ -753,8 +771,7 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 
         controller?.setLoading();
 
-        try {
-          await streamTranslate(
+        const pendingRequest = streamTranslate(
             cleanedText,
             config,
             {
@@ -773,6 +790,11 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
               },
               onError: (err) => {
                 if (abortController.signal.aborted) return;
+                // onError 在 pending Promise reject 之前触发；先移除失败项，
+                // 否则点击“重试”会再次拿到同一个已失败的 Promise。
+                if (translationInFlight.get(cacheKey) === pendingRequest) {
+                  translationInFlight.delete(cacheKey);
+                }
                 controller?.setError(err.message, () => {
                   doRequest();
                 });
@@ -783,9 +805,16 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
             },
             abortController.signal,
             doc
-          );
+        );
+        translationInFlight.set(cacheKey, pendingRequest);
+        try {
+          await pendingRequest;
         } catch (_) {
           // 已在 onError 回调中处理
+        } finally {
+          if (translationInFlight.get(cacheKey) === pendingRequest) {
+            translationInFlight.delete(cacheKey);
+          }
         }
       };
 

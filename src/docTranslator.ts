@@ -1,11 +1,30 @@
 import { DocTranslateOptions, DocTranslateProgress, DocumentTranslationService, PluginConfig } from './types';
 import { getSubprocess } from './env';
 import { buildPdfLinkRepairArgs, resolvePdfPythonCandidates } from './pdfLinkRepair';
-import { getApiKeyForEndpoint } from './config';
+import { DEEPSEEK_API_BASE_URL, getApiKeyForEndpoint, normalizeModelForEndpoint } from './config';
+
+function isOfficialDeepSeekBaseUrl(value: string): boolean {
+  const normalized = String(value || DEEPSEEK_API_BASE_URL)
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/v1$/i, '');
+  return /^https:\/\/api\.deepseek\.com$/i.test(normalized);
+}
+
+function openAICompatibleBaseUrl(value: string): string {
+  const normalized = String(value || '').trim().replace(/\/+$/, '');
+  if (!normalized) return normalized;
+  return /\/v1$/i.test(normalized) ? normalized : `${normalized}/v1`;
+}
 
 function resolveDocumentService(options: DocTranslateOptions, config: PluginConfig): DocumentTranslationService {
   if (options.service) return options.service;
-  if (config.endpointType === 'deepseek') return 'deepseek';
+  // pdf2zh 的 deepseek 服务把地址硬编码为 api.deepseek.com/v1。用户在设置页
+  // 填入代理、中转或自建 OpenAI 兼容地址时，改走 openai 服务并显式传入地址，
+  // 否则模型列表能成功但全文翻译仍会请求错误的官方地址。
+  if (config.endpointType === 'deepseek') {
+    return isOfficialDeepSeekBaseUrl(config.apiBaseUrl) ? 'deepseek' : 'openai';
+  }
   if (config.endpointType === 'gemini') return 'gemini';
   if (config.endpointType === 'openai') return 'openai';
   return 'agy';
@@ -31,14 +50,24 @@ export function buildPdf2zhEnvironment(
   } else if (service === 'deepseek') {
     const apiKey = getApiKeyForEndpoint(config);
     if (apiKey) environment.DEEPSEEK_API_KEY = apiKey;
-    if (config.model) environment.DEEPSEEK_MODEL = config.model;
+    const model = normalizeModelForEndpoint('deepseek', config.model);
+    if (model) environment.DEEPSEEK_MODEL = model;
   } else if (service === 'gemini') {
     const apiKey = getApiKeyForEndpoint(config);
     if (apiKey) environment.GEMINI_API_KEY = apiKey;
     if (config.model) environment.GEMINI_MODEL = config.model;
   } else if (service === 'openai') {
-    if (config.apiBaseUrl) environment.OPENAI_BASE_URL = config.apiBaseUrl;
-    if (config.model) environment.OPENAI_MODEL = config.model;
+    if (config.apiBaseUrl) {
+      environment.OPENAI_BASE_URL = config.endpointType === 'deepseek'
+        ? openAICompatibleBaseUrl(config.apiBaseUrl)
+        : config.apiBaseUrl;
+    }
+    if (config.endpointType === 'deepseek') {
+      const apiKey = getApiKeyForEndpoint(config);
+      if (apiKey) environment.OPENAI_API_KEY = apiKey;
+    }
+    const model = normalizeModelForEndpoint(config.endpointType, config.model);
+    if (model) environment.OPENAI_MODEL = model;
   } else if (service === 'ollama') {
     if (config.apiBaseUrl) environment.OLLAMA_HOST = config.apiBaseUrl.replace(/\/v1\/?$/, '');
     if (config.model) environment.OLLAMA_MODEL = config.model;
@@ -244,12 +273,39 @@ function appendProcessDiagnostic(lines: string[], chunk: string): void {
     const line = rawLine.replace(ansi, '').trim();
     if (!line) continue;
     lines.push(line);
-    if (lines.length > 20) lines.shift();
+    // 保留完整的 API 错误上下文；pdf2zh 的 tenacity traceback 经常超过 20 行，
+    // 过早丢弃开头的 HTTP/模型错误会只剩下 do = self.iter(...)。
+    if (lines.length > 80) lines.shift();
   }
 }
 
-function formatProcessExit(prefix: string, code: number | null, diagnostics: string[]): string {
-  const detail = diagnostics.slice(-8).join(' ').slice(-1600);
+function sanitizeProcessDiagnostic(line: string): string {
+  return line
+    .replace(/(Bearer\s+)[^\s,]+/gi, '$1***')
+    .replace(/((?:api[-_ ]?key|DEEPSEEK_API_KEY|OPENAI_API_KEY|GEMINI_API_KEY)\s*[:=]\s*)("[^"]*"|'[^']*'|[^,\s}]+)/gi, '$1***');
+}
+
+function diagnosticScore(line: string): number {
+  let score = 0;
+  if (/(?:Error code:|HTTP\/\d(?:\.\d)?\s+[45]\d\d|\b[45]\d\d\b)/i.test(line)) score += 100;
+  if (/(?:authentication|api[-_ ]?key|invalid|model|rate.?limit|quota|context length|insufficient)/i.test(line)) score += 60;
+  if (/\bERROR\b/i.test(line)) score += 20;
+  if (/\b(?:error|exception|failed)\b/i.test(line)) score += 10;
+  return score;
+}
+
+export function formatProcessExit(prefix: string, code: number | null, diagnostics: string[]): string {
+  const normalized = diagnostics.map(sanitizeProcessDiagnostic).filter(Boolean);
+  let best = '';
+  let bestScore = 0;
+  for (const line of normalized) {
+    const score = diagnosticScore(line);
+    if (score >= bestScore) {
+      best = line;
+      bestScore = score;
+    }
+  }
+  const detail = (best || normalized.slice(-8).join(' ')).slice(-1600);
   return `${prefix} (代码 ${code})${detail ? `：${detail}` : ''}`;
 }
 
@@ -393,7 +449,7 @@ export async function translateDocument(
   // 1. Zotero 7 原生环境 (Mozilla Subprocess)
   if (Subprocess?.call) {
     let proc: any;
-    const stderrDiagnostics: string[] = [];
+    const processDiagnostics: string[] = [];
     try {
       proc = await Subprocess.call({
         command: pdf2zhBin,
@@ -433,20 +489,22 @@ export async function translateDocument(
           const split = splitProcessOutput(buffer, chunk);
           buffer = split.remainder;
           for (const line of split.lines) {
-            if (captureDiagnostics) appendProcessDiagnostic(stderrDiagnostics, line);
+            if (captureDiagnostics) appendProcessDiagnostic(processDiagnostics, line);
             const progress = parsePdf2zhProgress(line);
             emitPdf2zhProgress(options, progress);
           }
         }
         if (buffer) {
-          if (captureDiagnostics) appendProcessDiagnostic(stderrDiagnostics, buffer);
+          if (captureDiagnostics) appendProcessDiagnostic(processDiagnostics, buffer);
           const progress = parsePdf2zhProgress(buffer);
           emitPdf2zhProgress(options, progress);
         }
       } catch (_) {}
     };
 
-    const stdoutReader = readStream(proc.stdout);
+    // API 客户端通常把 HTTP 401/429 和模型错误写到 stdout，stderr 只剩
+    // tenacity 的 traceback；两路都收集，失败时才能给用户可操作的原因。
+    const stdoutReader = readStream(proc.stdout, true);
     const stderrReader = readStream(proc.stderr, true);
 
     const { exitCode } = await proc.wait();
@@ -456,7 +514,7 @@ export async function translateDocument(
     }
 
     if (exitCode !== 0) {
-      throw documentError(options, formatProcessExit('排版翻译引擎退出', exitCode, stderrDiagnostics));
+      throw documentError(options, formatProcessExit('排版翻译引擎退出', exitCode, processDiagnostics));
     }
 
     const monoPdfPath = getExpectedOutputPdfPath(options.inputPdfPath, 'mono', options.outputDir);
@@ -487,7 +545,7 @@ export async function translateDocument(
     const nodeCp = 'node:child_process';
     const childProcess: any = await import(nodeCp);
     return new Promise((resolve, reject) => {
-      const stderrDiagnostics: string[] = [];
+      const processDiagnostics: string[] = [];
       let stdoutBuffer = '';
       let stderrBuffer = '';
       const cp = childProcess.spawn(pdf2zhBin, args, {
@@ -507,7 +565,7 @@ export async function translateDocument(
         const text = data.toString('utf-8');
         const split = splitProcessOutput(buffer, text);
         for (const line of split.lines) {
-          if (captureDiagnostics) appendProcessDiagnostic(stderrDiagnostics, line);
+          if (captureDiagnostics) appendProcessDiagnostic(processDiagnostics, line);
           const progress = parsePdf2zhProgress(line);
           emitPdf2zhProgress(options, progress);
         }
@@ -515,7 +573,7 @@ export async function translateDocument(
       };
 
       cp.stdout.on('data', (data: Buffer) => {
-        stdoutBuffer = handleData(data, stdoutBuffer);
+        stdoutBuffer = handleData(data, stdoutBuffer, true);
       });
       cp.stderr.on('data', (data: Buffer) => {
         stderrBuffer = handleData(data, stderrBuffer, true);
@@ -527,7 +585,7 @@ export async function translateDocument(
           emitPdf2zhProgress(options, progress);
         }
         if (stderrBuffer) {
-          appendProcessDiagnostic(stderrDiagnostics, stderrBuffer);
+          appendProcessDiagnostic(processDiagnostics, stderrBuffer);
           const progress = parsePdf2zhProgress(stderrBuffer);
           emitPdf2zhProgress(options, progress);
         }
@@ -536,7 +594,7 @@ export async function translateDocument(
           return;
         }
         if (code !== 0) {
-          reject(documentError(options, formatProcessExit('排版翻译引擎进程退出', code, stderrDiagnostics)));
+          reject(documentError(options, formatProcessExit('排版翻译引擎进程退出', code, processDiagnostics)));
           return;
         }
 

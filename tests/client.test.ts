@@ -315,7 +315,7 @@ test('client: Ollama 兼容端点不会发送残留云端 Authorization', async 
   }
 });
 
-test('client: DeepSeek Flash 使用官方兼容路径、鉴权和快速模式', async () => {
+test('client: DeepSeek API 使用官方兼容路径、鉴权和快速模式', async () => {
   let requestBody = '';
   let requestPath = '';
   let authorization = '';
@@ -360,9 +360,9 @@ test('client: DeepSeek Flash 使用官方兼容路径、鉴权和快速模式', 
 
     const parsed = JSON.parse(requestBody);
     assert.equal(result, 'DeepSeek 已回答');
-    assert.equal(requestPath, '/chat/completions');
+    assert.equal(requestPath, '/v1/chat/completions');
     assert.equal(authorization, 'Bearer deepseek-test-key');
-    assert.equal(parsed.model, 'deepseek-flash');
+    assert.equal(parsed.model, 'deepseek-chat');
     assert.deepEqual(parsed.thinking, { type: 'enabled', reasoning_effort: 'high' });
     assert.equal(parsed.messages[1].content[1].image_url.url, 'data:image/png;base64,AAAA');
   } finally {

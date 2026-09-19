@@ -4,7 +4,7 @@
   const PREF_KEY = 'extensions.gemini-translator.config';
   const SHARED_DEFAULTS = globalThis.GeminiTranslatorDefaults || {};
   const DEEPSEEK_API_BASE_URL = SHARED_DEFAULTS.apiBaseUrl || 'https://api.deepseek.com';
-  const DEEPSEEK_MODEL = SHARED_DEFAULTS.model || 'deepseek-flash';
+  const DEEPSEEK_MODEL = SHARED_DEFAULTS.model || 'deepseek-chat';
   const GEMINI_MODEL = 'gemini-3.8-flash';
   const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com';
   const DEFAULTS = Object.assign({}, SHARED_DEFAULTS);
@@ -34,6 +34,9 @@
     if (!normalized.deepseekApiKey && endpoint === 'deepseek') normalized.deepseekApiKey = legacyKey;
     if (!normalized.geminiApiKey && endpoint === 'gemini') normalized.geminiApiKey = legacyKey;
     normalized.apiKey = providerApiKey(normalized, endpoint);
+    if (endpoint === 'deepseek' && /^(deepseek-flash|deepseek-v4-pro)$/i.test(String(normalized.model || '').trim())) {
+      normalized.model = DEEPSEEK_MODEL;
+    }
     return normalized;
   }
 
@@ -41,8 +44,8 @@
   // 本地 Ollama/Agy 的用户被静态列表限制；DeepSeek/Gemini 列表来自各自官方模型目录。
   const MODEL_CATALOG = {
     deepseek: [
-      { value: 'deepseek-flash', label: 'deepseek-flash（多模态 / 快速）' },
-      { value: 'deepseek-v4-pro', label: 'deepseek-v4-pro（高质量文本）' },
+      { value: 'deepseek-chat', label: 'deepseek-chat（快速 / 通用）' },
+      { value: 'deepseek-reasoner', label: 'deepseek-reasoner（深度推理）' },
     ],
     gemini: [
       { value: 'gemini-3.8-flash', label: 'gemini-3.8-flash（稳定 / 快速）' },
@@ -246,7 +249,10 @@
       if (result?.available && Array.isArray(result.models) && result.models.length) {
         remoteModelsByEndpoint[endpoint] = result.models;
         const preferred = currentModelValue();
-        populateModelOptions(endpoint, preferred, result.models);
+        // 远端列表是权威来源。旧版设置中的占位模型不能作为自定义模型
+        // 继续保留，否则全文 pdf2zh 会收到不存在的 model ID。
+        const preferredIsKnown = result.models.some((item) => item.value === preferred);
+        populateModelOptions(endpoint, preferredIsKnown ? preferred : result.models[0].value, result.models);
         setModelRefreshStatus(result.detail || `已读取 ${result.models.length} 个模型`);
       } else {
         setModelRefreshStatus(`${result?.detail || '读取失败'}，使用内置列表`);

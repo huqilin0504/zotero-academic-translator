@@ -1,6 +1,6 @@
 import { ImageAttachment, PluginConfig, StreamCallbacks } from './types';
 import { getFetch, getTextDecoder, getSubprocess } from './env';
-import { getApiKeyForEndpoint } from './config';
+import { getApiKeyForEndpoint, normalizeModelForEndpoint } from './config';
 import { readPersistentJson, writePersistentJson } from './persistentStore';
 
 /**
@@ -98,6 +98,15 @@ function buildGeminiParts(
     parts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.data } });
   }
   return parts;
+}
+
+function buildOpenAIChatCompletionsUrl(apiBaseUrl: string, endpointType: PluginConfig['endpointType']): string {
+  let base = String(apiBaseUrl || '').trim().replace(/\/+$/, '')
+    .replace(/\/chat\/completions$/i, '');
+  // DeepSeek 的设置页故意显示不带版本号的官方根地址；其兼容接口实际
+  // 位于 /v1/chat/completions。已填写 /v1 的代理地址不重复追加。
+  if (endpointType === 'deepseek' && !/\/v1$/i.test(base)) base = `${base}/v1`;
+  return `${base}/chat/completions`;
 }
 
 /**
@@ -915,12 +924,12 @@ async function streamChatPrompt(
     : 'gemini';
 
   if (endpointType === 'openai') {
-    url = `${url}/chat/completions`;
+    url = buildOpenAIChatCompletionsUrl(config.apiBaseUrl, config.endpointType);
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
     bodyData = {
-      model: config.model,
+      model: normalizeModelForEndpoint(config.endpointType, config.model),
       stream: true,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -938,7 +947,7 @@ async function streamChatPrompt(
     // Google Gemini 原生 SSE 端点
     // Gemini API 要求通过 x-goog-api-key 请求头鉴权；不要把密钥放进
     // URL 查询参数，避免它被代理、调试日志或错误记录保存。
-    url = `${url}/v1beta/models/${encodeURIComponent(config.model)}:streamGenerateContent?alt=sse`;
+    url = `${url}/v1beta/models/${encodeURIComponent(normalizeModelForEndpoint(config.endpointType, config.model))}:streamGenerateContent?alt=sse`;
     if (apiKey) {
       headers['x-goog-api-key'] = apiKey;
     }

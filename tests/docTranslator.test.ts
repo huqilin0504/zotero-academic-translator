@@ -11,6 +11,7 @@ import {
   resolveDocumentOutputDir,
   resolveDocumentThreads,
   splitProcessOutput,
+  formatProcessExit,
   translateDocument,
 } from '../src/docTranslator';
 import { buildPdfLinkRepairArgs, resolvePdfPythonCandidates } from '../src/pdfLinkRepair';
@@ -148,6 +149,18 @@ test('docTranslator: parsePdf2zhProgress 进度日志解析', () => {
   assert.equal(parsePdf2zhProgress("Namespace(files=['paper.pdf'], output='/tmp/out', thread=6)"), null);
 });
 
+test('docTranslator: API 失败优先显示 HTTP/模型诊断而不是 tenacity 尾部', () => {
+  const message = formatProcessExit('排版翻译引擎退出', 1, [
+    'ERROR:pdf2zh.converter:Error code: converter.py:611',
+    "401 - {'error': {'message': 'Authentication Fails, Your api key: ****-key is invalid'}}",
+    'do = self.iter(retry_state=retry_state)',
+  ]);
+  assert.match(message, /401/);
+  assert.match(message, /Authentication Fails/);
+  assert.doesNotMatch(message, /do = self\.iter/);
+  assert.doesNotMatch(message, /secret-value/);
+});
+
 test('docTranslator: getExpectedOutputPdfPath 输出文件名推导', () => {
   // mono 模式（单语）
   const monoPath = getExpectedOutputPdfPath('/home/user/deep_learning.pdf', 'mono');
@@ -195,11 +208,29 @@ test('docTranslator: DeepSeek 配置路由到 pdf2zh 的 deepseek 服务', () =>
   const env = buildPdf2zhEnvironment({ inputPdfPath: '/tmp/paper.pdf' }, config);
   assert.deepEqual(env, {
     DEEPSEEK_API_KEY: 'deepseek-test-key',
-    DEEPSEEK_MODEL: 'deepseek-flash',
+    DEEPSEEK_MODEL: 'deepseek-chat',
   });
 
   const args = buildPdf2zhArgs({ inputPdfPath: '/tmp/paper.pdf' }, config);
   assert.equal(args[args.indexOf('--service') + 1], 'deepseek');
+});
+
+test('docTranslator: DeepSeek 自定义兼容地址改走 OpenAI 服务并传入 Key', () => {
+  const config: PluginConfig = {
+    ...mockConfig,
+    endpointType: 'deepseek',
+    apiBaseUrl: 'https://proxy.example.test',
+    deepseekApiKey: 'deepseek-test-key',
+    model: 'deepseek-chat',
+  };
+  const env = buildPdf2zhEnvironment({ inputPdfPath: '/tmp/paper.pdf' }, config);
+  assert.deepEqual(env, {
+    OPENAI_BASE_URL: 'https://proxy.example.test/v1',
+    OPENAI_API_KEY: 'deepseek-test-key',
+    OPENAI_MODEL: 'deepseek-chat',
+  });
+  const args = buildPdf2zhArgs({ inputPdfPath: '/tmp/paper.pdf' }, config);
+  assert.equal(args[args.indexOf('--service') + 1], 'openai');
 });
 
 test('docTranslator: Ollama/兼容端点不继承云端 API Key', () => {
@@ -293,6 +324,46 @@ console.log('Successfully saved translated output file');
     } else {
       process.env.TEST_ENV_FILE = previousEnvFile;
     }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('docTranslator: 全文 API 失败会保留可操作的 HTTP 诊断并隐藏密钥', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf2zh-api-error-'));
+  const mockBin = path.join(tmpDir, 'mock-pdf2zh-error.cjs');
+  fs.writeFileSync(
+    mockBin,
+    `#!/usr/bin/env node
+process.stdout.write("ERROR:pdf2zh.converter:Error code: converter.py:611\\n");
+process.stdout.write("401 - Authentication Fails, Your api key: Bearer secret-value is invalid\\n");
+process.stderr.write("do = self.iter(retry_state=retry_state)\\n");
+process.exit(1);
+`,
+    { mode: 0o755 }
+  );
+
+  try {
+    await assert.rejects(
+      translateDocument(
+        { inputPdfPath: '/tmp/source.pdf', outputDir: tmpDir, service: 'deepseek' },
+        {
+          ...mockConfig,
+          endpointType: 'deepseek',
+          apiKey: 'secret-value',
+          deepseekApiKey: 'secret-value',
+          model: 'deepseek-flash',
+          pdf2zhPath: mockBin,
+        }
+      ),
+      (error: any) => {
+        assert.match(error?.message || '', /401/);
+        assert.match(error?.message || '', /Authentication Fails/);
+        assert.doesNotMatch(error?.message || '', /do = self\.iter/);
+        assert.doesNotMatch(error?.message || '', /secret-value/);
+        return true;
+      }
+    );
+  } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
