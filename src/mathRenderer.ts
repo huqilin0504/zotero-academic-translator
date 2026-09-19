@@ -333,12 +333,20 @@ export function normalizeModelMathEscaping(text: string): string {
 /**
  * 恢复 API/PDF 文本中丢失分隔符的常见张量维度公式。
  *
- * 这里只处理带集合关系且包含至少两个维度的明确形态，例如
- * “L ∈ RB×N×S”或“P ∈ R(N+1)×D”。普通单词和已经被 $...$、\(...\)
- * 或 \[...\] 包住的公式不会进入该规则，避免把正文误判成数学表达式。
+ * 处理三类 PDF/API 常见退化形态：带集合关系且包含至少两个维度的张量，
+ * 被空格摊平的上下标（如“P c”），以及保留 ^/_ 但缺少分隔符的变量。
+ * 普通单词和已经被 $...$、\(...\) 或 \[...\] 包住的公式不会进入该规则，
+ * 避免把正文误判成数学表达式。
  */
 export function normalizeBareMathNotation(text: string): string {
-  if (!text || !/[∈∉⊂⊆=≈≤≥]/u.test(text)) return text;
+  if (
+    !text ||
+    (!/[∈∉⊂⊆=≈≤≥]/u.test(text) &&
+      !/[A-Za-z]\s+[A-Za-z0-9]/u.test(text) &&
+      !/[A-Za-z]\s*[_^]/u.test(text))
+  ) {
+    return text;
+  }
 
   const atom = String.raw`(?:\{[^{}\r\n]{1,80}\}|\([^()\r\n]{1,80}\)|[A-Za-z0-9⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉ᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿˢᵀᵁⱽᵂ]+)`;
   const pattern = new RegExp(
@@ -348,13 +356,46 @@ export function normalizeBareMathNotation(text: string): string {
       String.raw`(${atom}(?:[ \t]*(?:×|x|·|\*)[ \t]*${atom}){1,4})`,
     'gu'
   );
+  // PDF 文本层还可能把上下标完全摊平成空格，例如“P c 表示…”、
+  // “M i 表示…”或“P 1−N 的值”。只在单字母变量后面、且紧跟学术
+  // 语境词时恢复，避免把普通中文中的英文字母误判为公式。
+  const flattenedScriptPattern = new RegExp(
+    String.raw`(^|[^\\\p{L}\p{N}_$])` +
+      String.raw`([A-Za-z])\s+([A-Za-z0-9](?:\s*[−–-]\s*[A-Za-z0-9])?)` +
+      String.raw`(?=[ \t]*(?:表示|代表|为|的|对应|数值|值|个|区域|图像块|` +
+      String.raw`represents|denotes|stands for|is|value|of)(?![A-Za-z]))`,
+    'gu'
+  );
+  // 有些 API 会保留 ^/_，但仍省略 $...$ 分隔符。只在公式解释词或
+  // 标点紧随其后时恢复，避免把普通标识符（例如 file_name）误转为公式。
+  const markedScriptPattern = new RegExp(
+    String.raw`(^|[^\\\p{L}\p{N}_$])` +
+      String.raw`([A-Za-z])\s*([_^])\s*(\{[^{}\r\n]{1,40}\}|[A-Za-z0-9](?:[A-Za-z0-9+\-−–]{0,39}))` +
+      String.raw`(?=[ \t]*(?:表示|代表|为|的|对应|数值|值|个|区域|图像块|` +
+      String.raw`represents|denotes|stands for|is|value|of|[,.;:，。；：！？!?）\])|$)(?![A-Za-z]))`,
+    'gu'
+  );
 
   let result = '';
   let cursor = 0;
   while (cursor < text.length) {
     const explicit = findNextMath(text, cursor);
     pattern.lastIndex = cursor;
-    const bare = pattern.exec(text);
+    flattenedScriptPattern.lastIndex = cursor;
+    markedScriptPattern.lastIndex = cursor;
+    const tensor = pattern.exec(text);
+    const flattenedScript = flattenedScriptPattern.exec(text);
+    const markedScript = markedScriptPattern.exec(text);
+    let bare = tensor;
+    let kind: 'tensor' | 'script' | 'marked-script' = 'tensor';
+    if (flattenedScript && (!bare || flattenedScript.index < bare.index)) {
+      bare = flattenedScript;
+      kind = 'script';
+    }
+    if (markedScript && (!bare || markedScript.index < bare.index)) {
+      bare = markedScript;
+      kind = 'marked-script';
+    }
 
     // 已有的数学分隔符优先；裸公式匹配只在普通文本区间内生效。
     if (explicit && (!bare || explicit.start <= bare.index)) {
@@ -371,25 +412,35 @@ export function normalizeBareMathNotation(text: string): string {
     const start = bare.index + prefix.length;
     if (start > cursor) result += text.slice(cursor, start);
 
-    const left = bare[2];
-    const operator = bare[3];
-    const rawDimensions = bare[4].replace(/[{}]/g, '');
-    const dimensions = rawDimensions
-      .replace(/[×·]/gu, String.raw`\times `)
-      .replace(/\bx\b/gu, String.raw`\times `)
-      .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉]/gu, (value) => value);
-    const latexOperator: Record<string, string> = {
-      '∈': String.raw`\in`,
-      '∉': String.raw`\notin`,
-      '⊂': String.raw`\subset`,
-      '⊆': String.raw`\subseteq`,
-      '=': '=',
-      '≈': String.raw`\approx`,
-      '≤': String.raw`\le`,
-      '≥': String.raw`\ge`,
-    };
-    const replacement = `$${left} ${latexOperator[operator] || operator} \\mathbb{R}^{${dimensions}}$`;
-    result += replacement;
+    if (kind === 'script') {
+      const base = bare[2];
+      const script = bare[3].replace(/[−–]/gu, '-').replace(/\s+/g, '');
+      result += `$${base}^{${script}}$`;
+    } else if (kind === 'marked-script') {
+      const base = bare[2];
+      const operator = bare[3];
+      const script = bare[4].replace(/[−–]/gu, '-').replace(/^\{([\s\S]*)\}$/, '$1');
+      result += `$${base}${operator}{${script}}$`;
+    } else {
+      const left = bare[2];
+      const operator = bare[3];
+      const rawDimensions = bare[4].replace(/[{}]/g, '');
+      const dimensions = rawDimensions
+        .replace(/[×·]/gu, String.raw`\times `)
+        .replace(/\bx\b/gu, String.raw`\times `)
+        .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉]/gu, (value) => value);
+      const latexOperator: Record<string, string> = {
+        '∈': String.raw`\in`,
+        '∉': String.raw`\notin`,
+        '⊂': String.raw`\subset`,
+        '⊆': String.raw`\subseteq`,
+        '=': '=',
+        '≈': String.raw`\approx`,
+        '≤': String.raw`\le`,
+        '≥': String.raw`\ge`,
+      };
+      result += `$${left} ${latexOperator[operator] || operator} \\mathbb{R}^{${dimensions}}$`;
+    }
     cursor = bare.index + bare[0].length;
   }
   return result;

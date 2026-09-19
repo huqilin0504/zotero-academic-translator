@@ -1,6 +1,6 @@
 {
   "name": "zotero-academic-translator",
-  "version": "1.0.49",
+  "version": "1.0.50",
   "description": "Zotero 7+ 学术论文翻译插件",
   "type": "module",
   "scripts": {

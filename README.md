@@ -1,8 +1,10 @@
 # Zotero 学术论文翻译
 
-一个面向 Zotero PDF 阅读器的学术翻译与论文问答插件。当前发布版本为 **1.0.49**，仓库地址：
+一个面向 Zotero PDF 阅读器的学术翻译与论文问答插件。当前发布版本为 **1.0.50**，仓库地址：
 
 <https://github.com/huqilin0504/zotero-academic-translator>
+
+本版本变更记录见 [`CHANGELOG.md`](CHANGELOG.md)。
 
 插件清单当前声明支持 Zotero `7.0` 至 `10.*`。Zotero 6 不在当前构建和测试范围内。
 
@@ -49,11 +51,11 @@
 
 ### 从 GitHub Release 安装
 
-打开仓库的 [Releases](https://github.com/huqilin0504/zotero-academic-translator/releases) 页面，下载当前版本的 `zotero-academic-translator-1.0.49.xpi`，然后在 Zotero 中执行：
+打开仓库的 [Releases](https://github.com/huqilin0504/zotero-academic-translator/releases) 页面，下载当前版本的 `zotero-academic-translator-1.0.50.xpi`，然后在 Zotero 中执行：
 
 `工具` → `插件` → 齿轮图标 → `从文件安装插件…`
 
-也可以直接下载：[zotero-academic-translator-1.0.49.xpi](https://github.com/huqilin0504/zotero-academic-translator/releases/download/v1.0.49/zotero-academic-translator-1.0.49.xpi)
+也可以直接下载：[zotero-academic-translator-1.0.50.xpi](https://github.com/huqilin0504/zotero-academic-translator/releases/download/v1.0.50/zotero-academic-translator-1.0.50.xpi)
 
 ### 从源码打包
 
@@ -67,7 +69,7 @@ npm run package
 
 安装包会生成在：
 
-- `zotero-academic-translator-1.0.49.xpi`：带版本号的安装包；
+- `zotero-academic-translator-1.0.50.xpi`：带版本号的安装包；
 - `zotero-academic-translator.xpi`：同一安装包的稳定文件名副本。
 
 ## 设置

@@ -3,9 +3,9 @@
     "gemini-translator@local.ai": {
       "updates": [
         {
-          "version": "1.0.49",
-          "update_link": "https://github.com/huqilin0504/zotero-academic-translator/releases/download/v1.0.49/zotero-academic-translator-1.0.49.xpi",
-          "update_hash": "sha256:42478c27152dbe0efaeeb35e395112dd649c2b545d32fdcf0e5b1116ab798541",
+          "version": "1.0.50",
+          "update_link": "https://github.com/huqilin0504/zotero-academic-translator/releases/download/v1.0.50/zotero-academic-translator-1.0.50.xpi",
+          "update_hash": "sha256:c647df3b63501e5fe7d716dc590535b981af79727fb746a2f33d3b2ee03bebf8",
           "applications": {
             "zotero": {
               "strict_min_version": "7.0",

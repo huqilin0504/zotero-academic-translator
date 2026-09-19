@@ -82,3 +82,35 @@ test('markdownRenderer: 划词翻译返回裸张量公式时仍按公式显示',
   assert.equal(html.includes('RB×N×S'), false);
   assert.equal(html.includes('katex-error'), false);
 });
+
+test('markdownRenderer: 划词翻译截图中的摊平上下标在段落中正确显示', () => {
+  const html = renderMarkdownToHtml(
+    '其中，P c 表示第 c 个图像块的热值。M i 表示第 c 个图像块对应特征向量的第 i 个值。然后，我们将 P 1−N 的值按降序排列。'
+  );
+
+  assert.equal((html.match(/katex/g) || []).length >= 3, true);
+  assert.equal(html.includes('katex-error'), false);
+  assert.equal(html.includes('P 1−N'), false);
+});
+
+test('markdownRenderer: 划词翻译返回裸 ^/_ 公式时不依赖美元分隔符', () => {
+  const html = renderMarkdownToHtml('P^c 表示热值，M_{i+1} 代表下一个索引，x_i 的值如下。');
+
+  assert.equal((html.match(/katex/g) || []).length >= 3, true);
+  assert.equal(html.includes('katex-error'), false);
+  assert.equal(html.includes('P^c'), false);
+  assert.equal(html.includes('M_{i+1}'), false);
+});
+
+test('markdownRenderer: 列表、引用和链接中的公式渲染，代码块中的公式保持文本', () => {
+  const html = renderMarkdownToHtml(
+    '> 结论是 $x_i$。\n\n- P c 表示热值。\n\n[查看 $y^2$](https://example.com)\n\n```tex\nP c 表示代码文本\n```'
+  );
+
+  assert.match(html, /<blockquote>/);
+  assert.match(html, /<ul><li>/);
+  assert.match(html, /href="https:\/\/example\.com"/);
+  assert.equal((html.match(/katex/g) || []).length >= 2, true);
+  assert.equal(html.includes('<pre class="gemini-markdown-code"><code class="language-tex">P c 表示代码文本</code></pre>'), true);
+  assert.equal(html.includes('katex-error'), false);
+});

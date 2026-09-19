@@ -129,7 +129,7 @@
     model: "deepseek-flash",
     agyPath: "agy",
     targetLanguage: "\u7B80\u4F53\u4E2D\u6587",
-    systemPrompt: "Academic translator. Directly translate scientific literature into fluent, accurate Simplified Chinese following strict rules:\n1. Formula Fidelity: Never translate, flatten, omit, or reorder mathematical expressions, variables, subscripts, superscripts, set symbols, operators, dimensions, or equation numbers. Keep all LaTeX formulas and symbols intact. Use $...$ or \\( ... \\) for inline math and $$...$$ or \\[ ... \\] for display math. Preserve valid environments such as aligned, cases, matrix, and equation without translating their operators, variables, or alignment markers. If PDF text has lost delimiters, reconstruct the visible formula with LaTeX delimiters; for example, keep L \\in \\mathbb{R}^{B\\times N\\times S} as $L \\in \\mathbb{R}^{B\\times N\\times S}$. Keep explanatory text outside math blocks.\n2. Source Fidelity: Preserve punctuation, citation markers, technical abbreviations, and semantic hyphens in compound terms (for example, self-positioning and cross-view). Only remove a hyphen when it is clearly an artificial line-wrap break; never concatenate words that were separated by a meaningful hyphen.\n3. Output Format: Output ONLY the translated content without any explanations, notes, or conversational filler.",
+    systemPrompt: "Academic translator. Directly translate scientific literature into fluent, accurate Simplified Chinese following strict rules:\n1. Formula Fidelity: Never translate, flatten, omit, or reorder mathematical expressions, variables, subscripts, superscripts, set symbols, operators, dimensions, or equation numbers. Keep all LaTeX formulas and symbols intact. Use $...$ or \\( ... \\) for inline math and $$...$$ or \\[ ... \\] for display math. Preserve valid environments such as aligned, cases, matrix, and equation without translating their operators, variables, or alignment markers. If PDF text has lost delimiters or flattened a superscript/subscript into a space, reconstruct the visible formula with LaTeX delimiters; for example, keep L \\in \\mathbb{R}^{B\\times N\\times S}, P^c, M^i and P^{1-N} as math rather than returning P c, M i or P 1-N as prose. Keep explanatory text outside math blocks.\n2. Source Fidelity: Preserve punctuation, citation markers, technical abbreviations, and semantic hyphens in compound terms (for example, self-positioning and cross-view). Only remove a hyphen when it is clearly an artificial line-wrap break; never concatenate words that were separated by a meaningful hyphen.\n3. Output Format: Output ONLY the translated content without any explanations, notes, or conversational filler.",
     enableKaTeX: true,
     cacheSize: 500,
     autoTranslate: true,
@@ -16360,10 +16360,20 @@ ${text2}`;
     return result;
   }
   function normalizeBareMathNotation(text2) {
-    if (!text2 || !/[∈∉⊂⊆=≈≤≥]/u.test(text2)) return text2;
+    if (!text2 || !/[∈∉⊂⊆=≈≤≥]/u.test(text2) && !/[A-Za-z]\s+[A-Za-z0-9]/u.test(text2) && !/[A-Za-z]\s*[_^]/u.test(text2)) {
+      return text2;
+    }
     const atom = String.raw`(?:\{[^{}\r\n]{1,80}\}|\([^()\r\n]{1,80}\)|[A-Za-z0-9⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉ᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿˢᵀᵁⱽᵂ]+)`;
     const pattern = new RegExp(
       String.raw`(^|[^\\\p{L}\p{N}_$])` + String.raw`([A-Za-z](?:[_^](?:\{[^{}\r\n]{1,40}\}|[A-Za-z0-9]+))?)` + String.raw`[ \t]*(∈|∉|⊂|⊆|=|≈|≤|≥)[ \t]*R[ \t]*(?:\^|_)?[ \t]*` + String.raw`(${atom}(?:[ \t]*(?:×|x|·|\*)[ \t]*${atom}){1,4})`,
+      "gu"
+    );
+    const flattenedScriptPattern = new RegExp(
+      String.raw`(^|[^\\\p{L}\p{N}_$])` + String.raw`([A-Za-z])\s+([A-Za-z0-9](?:\s*[−–-]\s*[A-Za-z0-9])?)` + String.raw`(?=[ \t]*(?:表示|代表|为|的|对应|数值|值|个|区域|图像块|` + String.raw`represents|denotes|stands for|is|value|of)(?![A-Za-z]))`,
+      "gu"
+    );
+    const markedScriptPattern = new RegExp(
+      String.raw`(^|[^\\\p{L}\p{N}_$])` + String.raw`([A-Za-z])\s*([_^])\s*(\{[^{}\r\n]{1,40}\}|[A-Za-z0-9](?:[A-Za-z0-9+\-−–]{0,39}))` + String.raw`(?=[ \t]*(?:表示|代表|为|的|对应|数值|值|个|区域|图像块|` + String.raw`represents|denotes|stands for|is|value|of|[,.;:，。；：！？!?）\])|$)(?![A-Za-z]))`,
       "gu"
     );
     let result = "";
@@ -16371,7 +16381,21 @@ ${text2}`;
     while (cursor < text2.length) {
       const explicit = findNextMath(text2, cursor);
       pattern.lastIndex = cursor;
-      const bare = pattern.exec(text2);
+      flattenedScriptPattern.lastIndex = cursor;
+      markedScriptPattern.lastIndex = cursor;
+      const tensor = pattern.exec(text2);
+      const flattenedScript = flattenedScriptPattern.exec(text2);
+      const markedScript = markedScriptPattern.exec(text2);
+      let bare = tensor;
+      let kind = "tensor";
+      if (flattenedScript && (!bare || flattenedScript.index < bare.index)) {
+        bare = flattenedScript;
+        kind = "script";
+      }
+      if (markedScript && (!bare || markedScript.index < bare.index)) {
+        bare = markedScript;
+        kind = "marked-script";
+      }
       if (explicit && (!bare || explicit.start <= bare.index)) {
         result += text2.slice(cursor, explicit.end);
         cursor = explicit.end;
@@ -16384,22 +16408,32 @@ ${text2}`;
       const prefix = bare[1] || "";
       const start = bare.index + prefix.length;
       if (start > cursor) result += text2.slice(cursor, start);
-      const left = bare[2];
-      const operator = bare[3];
-      const rawDimensions = bare[4].replace(/[{}]/g, "");
-      const dimensions = rawDimensions.replace(/[×·]/gu, String.raw`\times `).replace(/\bx\b/gu, String.raw`\times `).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉]/gu, (value) => value);
-      const latexOperator = {
-        "\u2208": String.raw`\in`,
-        "\u2209": String.raw`\notin`,
-        "\u2282": String.raw`\subset`,
-        "\u2286": String.raw`\subseteq`,
-        "=": "=",
-        "\u2248": String.raw`\approx`,
-        "\u2264": String.raw`\le`,
-        "\u2265": String.raw`\ge`
-      };
-      const replacement = `$${left} ${latexOperator[operator] || operator} \\mathbb{R}^{${dimensions}}$`;
-      result += replacement;
+      if (kind === "script") {
+        const base = bare[2];
+        const script2 = bare[3].replace(/[−–]/gu, "-").replace(/\s+/g, "");
+        result += `$${base}^{${script2}}$`;
+      } else if (kind === "marked-script") {
+        const base = bare[2];
+        const operator = bare[3];
+        const script2 = bare[4].replace(/[−–]/gu, "-").replace(/^\{([\s\S]*)\}$/, "$1");
+        result += `$${base}${operator}{${script2}}$`;
+      } else {
+        const left = bare[2];
+        const operator = bare[3];
+        const rawDimensions = bare[4].replace(/[{}]/g, "");
+        const dimensions = rawDimensions.replace(/[×·]/gu, String.raw`\times `).replace(/\bx\b/gu, String.raw`\times `).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉]/gu, (value) => value);
+        const latexOperator = {
+          "\u2208": String.raw`\in`,
+          "\u2209": String.raw`\notin`,
+          "\u2282": String.raw`\subset`,
+          "\u2286": String.raw`\subseteq`,
+          "=": "=",
+          "\u2248": String.raw`\approx`,
+          "\u2264": String.raw`\le`,
+          "\u2265": String.raw`\ge`
+        };
+        result += `$${left} ${latexOperator[operator] || operator} \\mathbb{R}^{${dimensions}}$`;
+      }
       cursor = bare.index + bare[0].length;
     }
     return result;
