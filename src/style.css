@@ -3055,6 +3055,87 @@
   text-align: right;
 }
 
+.gemini-assistant-message-copy {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--zotero-popover-muted, #8a9098);
+  cursor: pointer;
+  opacity: 0.78;
+}
+
+.gemini-assistant-message-user .gemini-assistant-message-copy {
+  justify-self: end;
+}
+
+.gemini-assistant-message-assistant .gemini-assistant-message-copy {
+  display: flex;
+  margin-left: auto;
+}
+
+.gemini-assistant-message-copy-icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+  overflow: visible;
+}
+
+.gemini-assistant-message-copy:hover,
+.gemini-assistant-message-copy:focus-visible,
+.gemini-assistant-message-copy.is-copied {
+  background: var(--zotero-popover-subtle, #f4f5f7);
+  color: var(--zotero-popover-accent, #4f76c7);
+  opacity: 1;
+  outline: none;
+}
+
+.gemini-assistant-message-copy.is-copy-failed {
+  background: var(--gemini-error-bg, #fff0f0);
+  color: var(--gemini-error-text, #b42318);
+  opacity: 1;
+}
+
+.gemini-assistant-message-copy:disabled {
+  cursor: default;
+  opacity: 0.28;
+}
+
+.gemini-assistant-message-copy::after {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 10;
+  padding: 3px 6px;
+  border: 1px solid var(--zotero-popover-border, #dfe3e8);
+  border-radius: 4px;
+  background: var(--zotero-popover-surface, #fff);
+  box-shadow: 0 2px 7px rgba(20, 28, 38, 0.12);
+  color: var(--zotero-popover-text, #30343b);
+  content: attr(data-tooltip);
+  font: 11px/1.2 var(--zotero-popover-font, sans-serif);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity 100ms ease, transform 100ms ease;
+  white-space: nowrap;
+}
+
+.gemini-assistant-message-copy:hover::after,
+.gemini-assistant-message-copy:focus-visible::after,
+.gemini-assistant-message-copy.is-copied::after,
+.gemini-assistant-message-copy.is-copy-failed::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .gemini-assistant-scroll-latest {
   position: absolute;
   z-index: 3;

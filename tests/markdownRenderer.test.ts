@@ -65,3 +65,12 @@ test('markdownRenderer: 划词翻译常见 LaTeX 分隔符与 Markdown 混排', 
   assert.match(html, /\$not-a-formula\$/);
   assert.equal(html.includes('<code class="gemini-markdown-inline-code">'), false);
 });
+
+test('markdownRenderer: API 重复转义的 LaTeX 也能在翻译卡片中渲染', () => {
+  const html = renderMarkdownToHtml(String.raw`API 结果：\\(\\frac{a}{b}\\)，以及 \\[\\hat{y}=Wx\\]`);
+
+  assert.equal((html.match(/katex/g) || []).length > 1, true);
+  assert.equal(html.includes('\\\\('), false);
+  assert.equal(html.includes('\\\\['), false);
+  assert.equal(html.includes('katex-error'), false);
+});

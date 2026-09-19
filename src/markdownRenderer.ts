@@ -1,4 +1,4 @@
-import { findNextMath, renderMathToHtml } from './mathRenderer';
+import { findNextMath, normalizeModelMathEscaping, renderMathToHtml } from './mathRenderer';
 
 const TOKEN_START = '\uE000';
 const TOKEN_END = '\uE001';
@@ -237,16 +237,17 @@ function renderInline(source: string, enableKaTeX: boolean): string {
 }
 
 function extractMath(source: string, tokens: TokenStore): string {
+  const normalizedSource = normalizeModelMathEscaping(source);
   let result = '';
   let cursor = 0;
-  while (cursor < source.length) {
-    const match = findNextMath(source, cursor);
+  while (cursor < normalizedSource.length) {
+    const match = findNextMath(normalizedSource, cursor);
     if (!match) {
-      result += source.slice(cursor);
+      result += normalizedSource.slice(cursor);
       break;
     }
-    result += source.slice(cursor, match.start);
-    result += tokens.put(renderMathToHtml(source.slice(match.start, match.end)));
+    result += normalizedSource.slice(cursor, match.start);
+    result += tokens.put(renderMathToHtml(normalizedSource.slice(match.start, match.end)));
     cursor = match.end;
   }
   return result;

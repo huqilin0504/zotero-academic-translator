@@ -45,24 +45,25 @@ const MATH_ENVIRONMENTS = new Set([
  * 和常见数学环境。普通模型文本会先转义，只有 KaTeX 生成的标记进入 innerHTML。
  */
 export function renderMathToHtml(text: string): string {
-  if (!text || !containsMathSyntax(text)) {
-    return escapePlainText(text);
+  const normalizedText = normalizeModelMathEscaping(text);
+  if (!normalizedText || !containsMathSyntax(normalizedText)) {
+    return escapePlainText(normalizedText);
   }
 
   let html = '';
   let plainStart = 0;
   let cursor = 0;
-  while (cursor < text.length) {
-    const match = findNextMath(text, cursor);
+  while (cursor < normalizedText.length) {
+    const match = findNextMath(normalizedText, cursor);
     if (!match) break;
 
-    html += escapePlainText(text.slice(plainStart, match.start));
+    html += escapePlainText(normalizedText.slice(plainStart, match.start));
     html += renderMathMatch(match);
     cursor = match.end;
     plainStart = cursor;
   }
 
-  html += escapePlainText(text.slice(plainStart));
+  html += escapePlainText(normalizedText.slice(plainStart));
   return html;
 }
 
@@ -175,6 +176,171 @@ function renderFormula(
     const tag = displayMode ? 'div' : 'span';
     return `<${tag} class="katex-error">${escapeHtml(opening + mathContent + closing)}</${tag}>`;
   }
+}
+
+/**
+ * 一些 OpenAI 兼容 API 会把模型原本输出的 LaTeX 反斜杠再次转义，导致
+ * `\\(`、`\\[` 或 `\\frac` 到达渲染器时变成两个反斜杠。JSON.parse
+ * 只会去掉传输层转义，不能修复这种模型文本本身的重复转义；这里仅处理
+ * 数学分隔符，避免普通正文中的反斜杠被意外改写。
+ */
+export function normalizeModelMathEscaping(text: string): string {
+  if (!text) return text;
+
+  let result = '';
+  let cursor = 0;
+  let mode: { kind: 'inline' | 'display' | 'environment'; environment?: string } | null = null;
+
+  while (cursor < text.length) {
+    if (!mode) {
+      if (text.startsWith('\\\\(', cursor)) {
+        result += '\\(';
+        cursor += 2;
+        mode = { kind: 'inline' };
+        continue;
+      }
+      if (text.startsWith('\\\\[', cursor)) {
+        result += '\\[';
+        cursor += 2;
+        mode = { kind: 'display' };
+        continue;
+      }
+
+      const duplicateEnvironment = readMathEnvironmentAt(text, cursor, true, 'begin');
+      if (duplicateEnvironment) {
+        result += '\\begin{' + duplicateEnvironment.name + '}';
+        cursor = duplicateEnvironment.end;
+        mode = { kind: 'environment', environment: duplicateEnvironment.name };
+        continue;
+      }
+
+      if (text.startsWith('\\(', cursor)) {
+        result += '\\(';
+        cursor += 2;
+        mode = { kind: 'inline' };
+        continue;
+      }
+      if (text.startsWith('\\[', cursor)) {
+        result += '\\[';
+        cursor += 2;
+        mode = { kind: 'display' };
+        continue;
+      }
+
+      const environment = readMathEnvironmentAt(text, cursor, false, 'begin');
+      if (environment) {
+        result += text.slice(cursor, environment.end);
+        cursor = environment.end;
+        mode = { kind: 'environment', environment: environment.name };
+        continue;
+      }
+
+      if (text.startsWith('$$', cursor) && !isEscaped(text, cursor)) {
+        result += '$$';
+        cursor += 2;
+        mode = { kind: 'display' };
+        continue;
+      }
+      if (text[cursor] === '$' && !isEscaped(text, cursor) && text[cursor + 1] !== '$') {
+        result += '$';
+        cursor += 1;
+        mode = { kind: 'inline' };
+        continue;
+      }
+
+      result += text[cursor];
+      cursor += 1;
+      continue;
+    }
+
+    if (mode.kind === 'environment') {
+      const duplicateEnd = readMathEnvironmentAt(text, cursor, true, 'end');
+      if (duplicateEnd && duplicateEnd.name === mode.environment) {
+        result += '\\end{' + duplicateEnd.name + '}';
+        cursor = duplicateEnd.end;
+        mode = null;
+        continue;
+      }
+      const end = readMathEnvironmentAt(text, cursor, false, 'end');
+      if (end && end.name === mode.environment) {
+        result += text.slice(cursor, end.end);
+        cursor = end.end;
+        mode = null;
+        continue;
+      }
+    } else if (mode.kind === 'inline') {
+      if (text.startsWith('\\\\)', cursor)) {
+        result += '\\)';
+        cursor += 2;
+        mode = null;
+        continue;
+      }
+      if (text.startsWith('\\)', cursor)) {
+        result += '\\)';
+        cursor += 2;
+        mode = null;
+        continue;
+      }
+      if (text[cursor] === '$' && !isEscaped(text, cursor)) {
+        result += '$';
+        cursor += 1;
+        mode = null;
+        continue;
+      }
+    } else if (mode.kind === 'display') {
+      if (text.startsWith('\\\\]', cursor)) {
+        result += '\\]';
+        cursor += 2;
+        mode = null;
+        continue;
+      }
+      if (text.startsWith('\\]', cursor)) {
+        result += '\\]';
+        cursor += 2;
+        mode = null;
+        continue;
+      }
+      if (text.startsWith('$$', cursor) && !isEscaped(text, cursor)) {
+        result += '$$';
+        cursor += 2;
+        mode = null;
+        continue;
+      }
+    }
+
+    // 公式内部的双反斜杠通常是 API 对 LaTeX 命令的重复转义。
+    // 三反斜杠序列和后接方括号的行距写法必须保留，避免破坏矩阵换行。
+    if (
+      text.startsWith('\\\\', cursor) &&
+      text[cursor - 1] !== '\\' &&
+      /^[A-Za-z]{2,}/.test(text.slice(cursor + 2))
+    ) {
+      result += '\\';
+      cursor += 2;
+      continue;
+    }
+
+    result += text[cursor];
+    cursor += 1;
+  }
+
+  return result;
+}
+
+function readMathEnvironmentAt(
+  text: string,
+  index: number,
+  duplicatedSlash: boolean,
+  keyword: 'begin' | 'end'
+): { name: string; end: number } | null {
+  const prefix = duplicatedSlash ? '\\\\' + keyword + '{' : '\\' + keyword + '{';
+  if (!text.startsWith(prefix, index)) return null;
+  const nameStart = index + prefix.length;
+  const close = text.indexOf('}', nameStart);
+  if (close === -1) return null;
+  const name = text.slice(nameStart, close);
+  if (!/^[A-Za-z][A-Za-z0-9*]*$/.test(name) || !isMathEnvironment(name)) return null;
+  return { name, end: close + 1 };
 }
 
 function matchMathEnvironment(text: string, index: number): MathMatch | null {

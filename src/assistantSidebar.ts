@@ -152,6 +152,52 @@ function createAssistantSvgIcon(
   return svg;
 }
 
+function createAssistantMessageCopyButton(
+  doc: Document,
+  getText: () => string,
+  label: string
+): HTMLButtonElement {
+  const button = doc.createElement('button');
+  button.type = 'button';
+  button.className = 'gemini-assistant-message-copy';
+  button.title = '复制';
+  button.dataset.tooltip = '复制';
+  button.setAttribute('aria-label', `复制${label}`);
+  button.appendChild(createAssistantSvgIcon(
+    doc,
+    'gemini-assistant-message-copy-icon',
+    '0 0 24 24',
+    'M8 8h10v12H8zM6 16H4V4h10v2'
+  ));
+  button.addEventListener('click', async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const text = String(getText() || '').trim();
+    if (!text) return;
+    try {
+      await copyTextToClipboard(doc, text);
+      button.dataset.tooltip = '已复制';
+      button.title = '已复制';
+      button.classList.add('is-copied');
+      setTimeout(() => {
+        button.dataset.tooltip = '复制';
+        button.title = '复制';
+        button.classList.remove('is-copied');
+      }, 1200);
+    } catch (_) {
+      button.dataset.tooltip = '复制失败';
+      button.title = '复制失败';
+      button.classList.add('is-copy-failed');
+      setTimeout(() => {
+        button.dataset.tooltip = '复制';
+        button.title = '复制';
+        button.classList.remove('is-copy-failed');
+      }, 1200);
+    }
+  });
+  return button;
+}
+
 export function getAssistantSidebarWidthLimits(viewportWidth: number): { min: number; max: number } {
   const availableWidth = Math.max(0, Math.floor(Number.isFinite(viewportWidth) ? viewportWidth : 0) - 16);
   return {
@@ -353,6 +399,8 @@ interface ActiveAssistantTurn {
   userBubble: HTMLElement;
   assistantBubble: HTMLElement;
   status: HTMLElement;
+  assistantCopyButton: HTMLButtonElement;
+  answerTextRef: { value: string };
   finalized: boolean;
   historyIndex: number;
 }
@@ -845,6 +893,7 @@ export function createAssistantSidebar(
   const createConversationTurn = (question: string): ActiveAssistantTurn => {
     const turn = doc.createElement('article');
     turn.className = 'gemini-assistant-turn';
+    const answerTextRef = { value: '' };
 
     const userRow = doc.createElement('div');
     userRow.className = 'gemini-assistant-message gemini-assistant-message-user';
@@ -854,8 +903,10 @@ export function createAssistantSidebar(
     const userBubble = doc.createElement('div');
     userBubble.className = 'gemini-assistant-message-bubble';
     userBubble.textContent = question;
+    const userCopyButton = createAssistantMessageCopyButton(doc, () => question, '提问');
     userRow.appendChild(userLabel);
     userRow.appendChild(userBubble);
+    userRow.appendChild(userCopyButton);
 
     const assistantRow = doc.createElement('div');
     assistantRow.className = 'gemini-assistant-message gemini-assistant-message-assistant';
@@ -866,9 +917,12 @@ export function createAssistantSidebar(
     assistantBubble.className = 'gemini-assistant-message-bubble gemini-assistant-answer-bubble';
     const status = doc.createElement('div');
     status.className = 'gemini-assistant-message-status';
+    const assistantCopyButton = createAssistantMessageCopyButton(doc, () => answerTextRef.value, '回答');
+    assistantCopyButton.disabled = true;
     assistantRow.appendChild(assistantLabel);
     assistantRow.appendChild(assistantBubble);
     assistantRow.appendChild(status);
+    assistantRow.appendChild(assistantCopyButton);
 
     turn.appendChild(userRow);
     turn.appendChild(assistantRow);
@@ -880,6 +934,8 @@ export function createAssistantSidebar(
       userBubble,
       assistantBubble,
       status,
+      assistantCopyButton,
+      answerTextRef,
       finalized: false,
       historyIndex: -1,
     };
@@ -893,6 +949,8 @@ export function createAssistantSidebar(
       const savedTurn = conversationHistory[index];
       const turn = createConversationTurn(savedTurn.question);
       renderAnswer(doc, turn.assistantBubble, savedTurn.answer, true);
+      turn.answerTextRef.value = savedTurn.answer;
+      turn.assistantCopyButton.disabled = !savedTurn.answer.trim();
       turn.status.textContent = '已完成';
       turn.status.dataset.state = 'complete';
       turn.finalized = true;
@@ -907,6 +965,8 @@ export function createAssistantSidebar(
 
   const resetConversationTurn = (turn: ActiveAssistantTurn): void => {
     clearChildren(turn.assistantBubble);
+    turn.answerTextRef.value = '';
+    turn.assistantCopyButton.disabled = true;
     turn.status.textContent = '思考中';
     turn.status.dataset.state = 'loading';
     turn.finalized = false;
@@ -1109,6 +1169,8 @@ export function createAssistantSidebar(
       activeTurn.status.textContent = '回答中';
       activeTurn.status.dataset.state = 'streaming';
       completedAnswer = accumulatedText;
+      activeTurn.answerTextRef.value = accumulatedText;
+      activeTurn.assistantCopyButton.disabled = !accumulatedText.trim();
       appendStreamingText(doc, activeTurn.assistantBubble, accumulatedText);
       scrollConversationToBottom();
     },
@@ -1119,6 +1181,8 @@ export function createAssistantSidebar(
       activeTurn.status.textContent = fromCache ? '已缓存' : '已完成';
       activeTurn.status.dataset.state = fromCache ? 'cached' : 'complete';
       completedAnswer = fullText;
+      activeTurn.answerTextRef.value = fullText;
+      activeTurn.assistantCopyButton.disabled = !fullText.trim();
       sendButton.disabled = false;
       renderAnswer(doc, activeTurn.assistantBubble, fullText, enableKaTeX);
       activeTurn.finalized = true;
@@ -1138,6 +1202,8 @@ export function createAssistantSidebar(
       resultStatus.dataset.state = 'error';
       activeTurn.status.textContent = '失败';
       activeTurn.status.dataset.state = 'error';
+      activeTurn.answerTextRef.value = '';
+      activeTurn.assistantCopyButton.disabled = true;
       sendButton.disabled = false;
       appendError(doc, activeTurn.assistantBubble, errorMsg, onRetry);
       scrollConversationToBottom();

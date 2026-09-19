@@ -16120,21 +16120,22 @@ ${text2}`;
     "array"
   ]);
   function renderMathToHtml(text2) {
-    if (!text2 || !containsMathSyntax(text2)) {
-      return escapePlainText(text2);
+    const normalizedText = normalizeModelMathEscaping(text2);
+    if (!normalizedText || !containsMathSyntax(normalizedText)) {
+      return escapePlainText(normalizedText);
     }
     let html = "";
     let plainStart = 0;
     let cursor = 0;
-    while (cursor < text2.length) {
-      const match = findNextMath(text2, cursor);
+    while (cursor < normalizedText.length) {
+      const match = findNextMath(normalizedText, cursor);
       if (!match) break;
-      html += escapePlainText(text2.slice(plainStart, match.start));
+      html += escapePlainText(normalizedText.slice(plainStart, match.start));
       html += renderMathMatch(match);
       cursor = match.end;
       plainStart = cursor;
     }
-    html += escapePlainText(text2.slice(plainStart));
+    html += escapePlainText(normalizedText.slice(plainStart));
     return html;
   }
   function findNextMath(text2, start = 0) {
@@ -16218,6 +16219,141 @@ ${text2}`;
       const tag = displayMode ? "div" : "span";
       return `<${tag} class="katex-error">${escapeHtml(opening + mathContent + closing)}</${tag}>`;
     }
+  }
+  function normalizeModelMathEscaping(text2) {
+    if (!text2) return text2;
+    let result = "";
+    let cursor = 0;
+    let mode = null;
+    while (cursor < text2.length) {
+      if (!mode) {
+        if (text2.startsWith("\\\\(", cursor)) {
+          result += "\\(";
+          cursor += 2;
+          mode = { kind: "inline" };
+          continue;
+        }
+        if (text2.startsWith("\\\\[", cursor)) {
+          result += "\\[";
+          cursor += 2;
+          mode = { kind: "display" };
+          continue;
+        }
+        const duplicateEnvironment = readMathEnvironmentAt(text2, cursor, true, "begin");
+        if (duplicateEnvironment) {
+          result += "\\begin{" + duplicateEnvironment.name + "}";
+          cursor = duplicateEnvironment.end;
+          mode = { kind: "environment", environment: duplicateEnvironment.name };
+          continue;
+        }
+        if (text2.startsWith("\\(", cursor)) {
+          result += "\\(";
+          cursor += 2;
+          mode = { kind: "inline" };
+          continue;
+        }
+        if (text2.startsWith("\\[", cursor)) {
+          result += "\\[";
+          cursor += 2;
+          mode = { kind: "display" };
+          continue;
+        }
+        const environment = readMathEnvironmentAt(text2, cursor, false, "begin");
+        if (environment) {
+          result += text2.slice(cursor, environment.end);
+          cursor = environment.end;
+          mode = { kind: "environment", environment: environment.name };
+          continue;
+        }
+        if (text2.startsWith("$$", cursor) && !isEscaped(text2, cursor)) {
+          result += "$$";
+          cursor += 2;
+          mode = { kind: "display" };
+          continue;
+        }
+        if (text2[cursor] === "$" && !isEscaped(text2, cursor) && text2[cursor + 1] !== "$") {
+          result += "$";
+          cursor += 1;
+          mode = { kind: "inline" };
+          continue;
+        }
+        result += text2[cursor];
+        cursor += 1;
+        continue;
+      }
+      if (mode.kind === "environment") {
+        const duplicateEnd = readMathEnvironmentAt(text2, cursor, true, "end");
+        if (duplicateEnd && duplicateEnd.name === mode.environment) {
+          result += "\\end{" + duplicateEnd.name + "}";
+          cursor = duplicateEnd.end;
+          mode = null;
+          continue;
+        }
+        const end = readMathEnvironmentAt(text2, cursor, false, "end");
+        if (end && end.name === mode.environment) {
+          result += text2.slice(cursor, end.end);
+          cursor = end.end;
+          mode = null;
+          continue;
+        }
+      } else if (mode.kind === "inline") {
+        if (text2.startsWith("\\\\)", cursor)) {
+          result += "\\)";
+          cursor += 2;
+          mode = null;
+          continue;
+        }
+        if (text2.startsWith("\\)", cursor)) {
+          result += "\\)";
+          cursor += 2;
+          mode = null;
+          continue;
+        }
+        if (text2[cursor] === "$" && !isEscaped(text2, cursor)) {
+          result += "$";
+          cursor += 1;
+          mode = null;
+          continue;
+        }
+      } else if (mode.kind === "display") {
+        if (text2.startsWith("\\\\]", cursor)) {
+          result += "\\]";
+          cursor += 2;
+          mode = null;
+          continue;
+        }
+        if (text2.startsWith("\\]", cursor)) {
+          result += "\\]";
+          cursor += 2;
+          mode = null;
+          continue;
+        }
+        if (text2.startsWith("$$", cursor) && !isEscaped(text2, cursor)) {
+          result += "$$";
+          cursor += 2;
+          mode = null;
+          continue;
+        }
+      }
+      if (text2.startsWith("\\\\", cursor) && text2[cursor - 1] !== "\\" && /^[A-Za-z]{2,}/.test(text2.slice(cursor + 2))) {
+        result += "\\";
+        cursor += 2;
+        continue;
+      }
+      result += text2[cursor];
+      cursor += 1;
+    }
+    return result;
+  }
+  function readMathEnvironmentAt(text2, index, duplicatedSlash, keyword) {
+    const prefix = duplicatedSlash ? "\\\\" + keyword + "{" : "\\" + keyword + "{";
+    if (!text2.startsWith(prefix, index)) return null;
+    const nameStart = index + prefix.length;
+    const close2 = text2.indexOf("}", nameStart);
+    if (close2 === -1) return null;
+    const name = text2.slice(nameStart, close2);
+    if (!/^[A-Za-z][A-Za-z0-9*]*$/.test(name) || !isMathEnvironment(name)) return null;
+    return { name, end: close2 + 1 };
   }
   function matchMathEnvironment(text2, index) {
     if (!text2.startsWith("\\begin{", index)) return null;
@@ -16457,16 +16593,17 @@ ${lines[index].trim()}`;
     return tokens.restore(html);
   }
   function extractMath(source, tokens) {
+    const normalizedSource = normalizeModelMathEscaping(source);
     let result = "";
     let cursor = 0;
-    while (cursor < source.length) {
-      const match = findNextMath(source, cursor);
+    while (cursor < normalizedSource.length) {
+      const match = findNextMath(normalizedSource, cursor);
       if (!match) {
-        result += source.slice(cursor);
+        result += normalizedSource.slice(cursor);
         break;
       }
-      result += source.slice(cursor, match.start);
-      result += tokens.put(renderMathToHtml(source.slice(match.start, match.end)));
+      result += normalizedSource.slice(cursor, match.start);
+      result += tokens.put(renderMathToHtml(normalizedSource.slice(match.start, match.end)));
       cursor = match.end;
     }
     return result;
@@ -17160,6 +17297,47 @@ AI\uFF1A${answer}`;
     svg.appendChild(path2);
     return svg;
   }
+  function createAssistantMessageCopyButton(doc, getText, label) {
+    const button = doc.createElement("button");
+    button.type = "button";
+    button.className = "gemini-assistant-message-copy";
+    button.title = "\u590D\u5236";
+    button.dataset.tooltip = "\u590D\u5236";
+    button.setAttribute("aria-label", `\u590D\u5236${label}`);
+    button.appendChild(createAssistantSvgIcon(
+      doc,
+      "gemini-assistant-message-copy-icon",
+      "0 0 24 24",
+      "M8 8h10v12H8zM6 16H4V4h10v2"
+    ));
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const text2 = String(getText() || "").trim();
+      if (!text2) return;
+      try {
+        await copyTextToClipboard(doc, text2);
+        button.dataset.tooltip = "\u5DF2\u590D\u5236";
+        button.title = "\u5DF2\u590D\u5236";
+        button.classList.add("is-copied");
+        setTimeout(() => {
+          button.dataset.tooltip = "\u590D\u5236";
+          button.title = "\u590D\u5236";
+          button.classList.remove("is-copied");
+        }, 1200);
+      } catch (_) {
+        button.dataset.tooltip = "\u590D\u5236\u5931\u8D25";
+        button.title = "\u590D\u5236\u5931\u8D25";
+        button.classList.add("is-copy-failed");
+        setTimeout(() => {
+          button.dataset.tooltip = "\u590D\u5236";
+          button.title = "\u590D\u5236";
+          button.classList.remove("is-copy-failed");
+        }, 1200);
+      }
+    });
+    return button;
+  }
   function getAssistantSidebarWidthLimits(viewportWidth) {
     const availableWidth = Math.max(0, Math.floor(Number.isFinite(viewportWidth) ? viewportWidth : 0) - 16);
     return {
@@ -17767,6 +17945,7 @@ AI\uFF1A${answer}`;
     const createConversationTurn = (question) => {
       const turn = doc.createElement("article");
       turn.className = "gemini-assistant-turn";
+      const answerTextRef = { value: "" };
       const userRow = doc.createElement("div");
       userRow.className = "gemini-assistant-message gemini-assistant-message-user";
       const userLabel = doc.createElement("div");
@@ -17775,8 +17954,10 @@ AI\uFF1A${answer}`;
       const userBubble = doc.createElement("div");
       userBubble.className = "gemini-assistant-message-bubble";
       userBubble.textContent = question;
+      const userCopyButton = createAssistantMessageCopyButton(doc, () => question, "\u63D0\u95EE");
       userRow.appendChild(userLabel);
       userRow.appendChild(userBubble);
+      userRow.appendChild(userCopyButton);
       const assistantRow = doc.createElement("div");
       assistantRow.className = "gemini-assistant-message gemini-assistant-message-assistant";
       const assistantLabel = doc.createElement("div");
@@ -17786,9 +17967,12 @@ AI\uFF1A${answer}`;
       assistantBubble.className = "gemini-assistant-message-bubble gemini-assistant-answer-bubble";
       const status2 = doc.createElement("div");
       status2.className = "gemini-assistant-message-status";
+      const assistantCopyButton = createAssistantMessageCopyButton(doc, () => answerTextRef.value, "\u56DE\u7B54");
+      assistantCopyButton.disabled = true;
       assistantRow.appendChild(assistantLabel);
       assistantRow.appendChild(assistantBubble);
       assistantRow.appendChild(status2);
+      assistantRow.appendChild(assistantCopyButton);
       turn.appendChild(userRow);
       turn.appendChild(assistantRow);
       resultContent.appendChild(turn);
@@ -17799,6 +17983,8 @@ AI\uFF1A${answer}`;
         userBubble,
         assistantBubble,
         status: status2,
+        assistantCopyButton,
+        answerTextRef,
         finalized: false,
         historyIndex: -1
       };
@@ -17811,6 +17997,8 @@ AI\uFF1A${answer}`;
         const savedTurn = conversationHistory[index];
         const turn = createConversationTurn(savedTurn.question);
         renderAnswer(doc, turn.assistantBubble, savedTurn.answer, true);
+        turn.answerTextRef.value = savedTurn.answer;
+        turn.assistantCopyButton.disabled = !savedTurn.answer.trim();
         turn.status.textContent = "\u5DF2\u5B8C\u6210";
         turn.status.dataset.state = "complete";
         turn.finalized = true;
@@ -17824,6 +18012,8 @@ AI\uFF1A${answer}`;
     };
     const resetConversationTurn = (turn) => {
       clearChildren(turn.assistantBubble);
+      turn.answerTextRef.value = "";
+      turn.assistantCopyButton.disabled = true;
       turn.status.textContent = "\u601D\u8003\u4E2D";
       turn.status.dataset.state = "loading";
       turn.finalized = false;
@@ -18016,6 +18206,8 @@ AI\uFF1A${answer}`;
         activeTurn.status.textContent = "\u56DE\u7B54\u4E2D";
         activeTurn.status.dataset.state = "streaming";
         completedAnswer = accumulatedText;
+        activeTurn.answerTextRef.value = accumulatedText;
+        activeTurn.assistantCopyButton.disabled = !accumulatedText.trim();
         appendStreamingText2(doc, activeTurn.assistantBubble, accumulatedText);
         scrollConversationToBottom();
       },
@@ -18026,6 +18218,8 @@ AI\uFF1A${answer}`;
         activeTurn.status.textContent = fromCache ? "\u5DF2\u7F13\u5B58" : "\u5DF2\u5B8C\u6210";
         activeTurn.status.dataset.state = fromCache ? "cached" : "complete";
         completedAnswer = fullText;
+        activeTurn.answerTextRef.value = fullText;
+        activeTurn.assistantCopyButton.disabled = !fullText.trim();
         sendButton.disabled = false;
         renderAnswer(doc, activeTurn.assistantBubble, fullText, enableKaTeX);
         activeTurn.finalized = true;
@@ -18045,6 +18239,8 @@ AI\uFF1A${answer}`;
         resultStatus.dataset.state = "error";
         activeTurn.status.textContent = "\u5931\u8D25";
         activeTurn.status.dataset.state = "error";
+        activeTurn.answerTextRef.value = "";
+        activeTurn.assistantCopyButton.disabled = true;
         sendButton.disabled = false;
         appendError2(doc, activeTurn.assistantBubble, errorMsg, onRetry);
         scrollConversationToBottom();
@@ -21144,6 +21340,87 @@ AI\uFF1A${answer}`;
   color: var(--zotero-popover-muted, #8a9098);
   font-size: 10px;
   text-align: right;
+}
+
+.gemini-assistant-message-copy {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--zotero-popover-muted, #8a9098);
+  cursor: pointer;
+  opacity: 0.78;
+}
+
+.gemini-assistant-message-user .gemini-assistant-message-copy {
+  justify-self: end;
+}
+
+.gemini-assistant-message-assistant .gemini-assistant-message-copy {
+  display: flex;
+  margin-left: auto;
+}
+
+.gemini-assistant-message-copy-icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+  overflow: visible;
+}
+
+.gemini-assistant-message-copy:hover,
+.gemini-assistant-message-copy:focus-visible,
+.gemini-assistant-message-copy.is-copied {
+  background: var(--zotero-popover-subtle, #f4f5f7);
+  color: var(--zotero-popover-accent, #4f76c7);
+  opacity: 1;
+  outline: none;
+}
+
+.gemini-assistant-message-copy.is-copy-failed {
+  background: var(--gemini-error-bg, #fff0f0);
+  color: var(--gemini-error-text, #b42318);
+  opacity: 1;
+}
+
+.gemini-assistant-message-copy:disabled {
+  cursor: default;
+  opacity: 0.28;
+}
+
+.gemini-assistant-message-copy::after {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 10;
+  padding: 3px 6px;
+  border: 1px solid var(--zotero-popover-border, #dfe3e8);
+  border-radius: 4px;
+  background: var(--zotero-popover-surface, #fff);
+  box-shadow: 0 2px 7px rgba(20, 28, 38, 0.12);
+  color: var(--zotero-popover-text, #30343b);
+  content: attr(data-tooltip);
+  font: 11px/1.2 var(--zotero-popover-font, sans-serif);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity 100ms ease, transform 100ms ease;
+  white-space: nowrap;
+}
+
+.gemini-assistant-message-copy:hover::after,
+.gemini-assistant-message-copy:focus-visible::after,
+.gemini-assistant-message-copy.is-copied::after,
+.gemini-assistant-message-copy.is-copy-failed::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .gemini-assistant-scroll-latest {

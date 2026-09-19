@@ -57,6 +57,15 @@ test('mathRenderer: 支持 LaTeX 原生行内和块级分隔符', () => {
   assert.equal(html.includes('\\\\['), false, '已识别的块级分隔符不应原样显示');
 });
 
+test('mathRenderer: 兼容 API 返回的重复转义 LaTeX 分隔符和命令', () => {
+  const html = renderMathToHtml('API 结果：\\\\(\\\\frac{a}{b}\\\\)，以及 \\\\[\\\\hat{y}=Wx\\\\]');
+
+  assert.equal((html.match(/katex/g) || []).length > 1, true);
+  assert.equal(html.includes('\\\\('), false, '重复转义的行内分隔符不应原样显示');
+  assert.equal(html.includes('\\\\['), false, '重复转义的块级分隔符不应原样显示');
+  assert.equal(html.includes('katex-error'), false);
+});
+
 test('mathRenderer: 支持 aligned 和 matrix 数学环境', () => {
   const html = renderMathToHtml(
     '\\begin{aligned}f(x)&=x^2+1\\\\g(x)&=2x\\end{aligned}\\n\\begin{bmatrix}1&0\\\\0&1\\end{bmatrix}'
@@ -64,6 +73,13 @@ test('mathRenderer: 支持 aligned 和 matrix 数学环境', () => {
 
   assert.equal((html.match(/katex-display/g) || []).length, 2);
   assert.equal(html.includes('katex-mathml'), false);
+});
+
+test('mathRenderer: 不会把矩阵行距语法 \\[4pt] 当成块级分隔符', () => {
+  const html = renderMathToHtml(String.raw`\begin{matrix}a&b\\[4pt]c&d\end{matrix}`);
+
+  assert.equal((html.match(/katex-display/g) || []).length, 1);
+  assert.equal(html.includes('katex-error'), false);
 });
 
 test('mathRenderer: 公式内空格可保留，未配对货币符号不会误渲染', () => {
