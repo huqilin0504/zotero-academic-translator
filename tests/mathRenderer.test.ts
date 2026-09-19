@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMathToHtml } from '../src/mathRenderer';
+import { normalizeBareMathNotation, renderMathToHtml } from '../src/mathRenderer';
 
 test('mathRenderer: 渲染行内公式 $E=mc^2$', () => {
   const input = '根据公式 $E = mc^2$，质量与能量等价。';
@@ -87,6 +87,22 @@ test('mathRenderer: 公式内空格可保留，未配对货币符号不会误渲
 
   assert.match(html, /katex/);
   assert.match(html, /\$100 USD/);
+});
+
+test('mathRenderer: 划词翻译返回无分隔符的张量公式时恢复上下标', () => {
+  const input = '所有输出 L ∈ RB×N×S（其中 B 代表批大小，N 代表 patch 大小）。';
+  const normalized = normalizeBareMathNotation(input);
+  assert.match(normalized, /\$L \\in \\mathbb\{R\}\^\{B\\times N\\times S\}\$/);
+  const html = renderMathToHtml(input);
+  assert.match(html, /katex/);
+  assert.equal(html.includes('RB×N×S'), false, '裸维度表达式不应继续作为普通正文输出');
+});
+
+test('mathRenderer: 已有分隔符的公式不被裸公式规则重复包裹', () => {
+  const input = '输出为 $L \\in \\mathbb{R}^{B\\times N\\times S}$。';
+  const normalized = normalizeBareMathNotation(input);
+  assert.equal((normalized.match(/\$/g) || []).length, 2);
+  assert.equal(normalized.includes('$$L'), false);
 });
 
 test('mathRenderer: 转义分隔符和未闭合公式保持为普通文本', () => {

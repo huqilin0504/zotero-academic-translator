@@ -74,3 +74,11 @@ test('markdownRenderer: API 重复转义的 LaTeX 也能在翻译卡片中渲染
   assert.equal(html.includes('\\\\['), false);
   assert.equal(html.includes('katex-error'), false);
 });
+
+test('markdownRenderer: 划词翻译返回裸张量公式时仍按公式显示', () => {
+  const html = renderMarkdownToHtml('所有输出 L ∈ RB×N×S（其中 B 代表批大小）。');
+
+  assert.match(html, /katex/);
+  assert.equal(html.includes('RB×N×S'), false);
+  assert.equal(html.includes('katex-error'), false);
+});

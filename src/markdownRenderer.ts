@@ -1,4 +1,9 @@
-import { findNextMath, normalizeModelMathEscaping, renderMathToHtml } from './mathRenderer';
+import {
+  findNextMath,
+  normalizeBareMathNotation,
+  normalizeModelMathEscaping,
+  renderMathToHtml,
+} from './mathRenderer';
 
 const TOKEN_START = '\uE000';
 const TOKEN_END = '\uE001';
@@ -237,7 +242,7 @@ function renderInline(source: string, enableKaTeX: boolean): string {
 }
 
 function extractMath(source: string, tokens: TokenStore): string {
-  const normalizedSource = normalizeModelMathEscaping(source);
+  const normalizedSource = normalizeBareMathNotation(normalizeModelMathEscaping(source));
   let result = '';
   let cursor = 0;
   while (cursor < normalizedSource.length) {

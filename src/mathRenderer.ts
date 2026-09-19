@@ -45,7 +45,10 @@ const MATH_ENVIRONMENTS = new Set([
  * 和常见数学环境。普通模型文本会先转义，只有 KaTeX 生成的标记进入 innerHTML。
  */
 export function renderMathToHtml(text: string): string {
-  const normalizedText = normalizeModelMathEscaping(text);
+  // 划词翻译的 PDF 文本层有时会把公式分隔符和上/下标排版信息丢掉，
+  // 例如模型返回“L ∈ RB×N×S”而不是带 $...$ 的 LaTeX。先恢复这类
+  // 明确的张量维度表达式，再交给同一套 KaTeX 扫描器，避免它退化成普通正文。
+  const normalizedText = normalizeBareMathNotation(normalizeModelMathEscaping(text));
   if (!normalizedText || !containsMathSyntax(normalizedText)) {
     return escapePlainText(normalizedText);
   }
@@ -324,6 +327,71 @@ export function normalizeModelMathEscaping(text: string): string {
     cursor += 1;
   }
 
+  return result;
+}
+
+/**
+ * 恢复 API/PDF 文本中丢失分隔符的常见张量维度公式。
+ *
+ * 这里只处理带集合关系且包含至少两个维度的明确形态，例如
+ * “L ∈ RB×N×S”或“P ∈ R(N+1)×D”。普通单词和已经被 $...$、\(...\)
+ * 或 \[...\] 包住的公式不会进入该规则，避免把正文误判成数学表达式。
+ */
+export function normalizeBareMathNotation(text: string): string {
+  if (!text || !/[∈∉⊂⊆=≈≤≥]/u.test(text)) return text;
+
+  const atom = String.raw`(?:\{[^{}\r\n]{1,80}\}|\([^()\r\n]{1,80}\)|[A-Za-z0-9⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉ᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿˢᵀᵁⱽᵂ]+)`;
+  const pattern = new RegExp(
+    String.raw`(^|[^\\\p{L}\p{N}_$])` +
+      String.raw`([A-Za-z](?:[_^](?:\{[^{}\r\n]{1,40}\}|[A-Za-z0-9]+))?)` +
+      String.raw`[ \t]*(∈|∉|⊂|⊆|=|≈|≤|≥)[ \t]*R[ \t]*(?:\^|_)?[ \t]*` +
+      String.raw`(${atom}(?:[ \t]*(?:×|x|·|\*)[ \t]*${atom}){1,4})`,
+    'gu'
+  );
+
+  let result = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const explicit = findNextMath(text, cursor);
+    pattern.lastIndex = cursor;
+    const bare = pattern.exec(text);
+
+    // 已有的数学分隔符优先；裸公式匹配只在普通文本区间内生效。
+    if (explicit && (!bare || explicit.start <= bare.index)) {
+      result += text.slice(cursor, explicit.end);
+      cursor = explicit.end;
+      continue;
+    }
+    if (!bare) {
+      result += text.slice(cursor);
+      break;
+    }
+
+    const prefix = bare[1] || '';
+    const start = bare.index + prefix.length;
+    if (start > cursor) result += text.slice(cursor, start);
+
+    const left = bare[2];
+    const operator = bare[3];
+    const rawDimensions = bare[4].replace(/[{}]/g, '');
+    const dimensions = rawDimensions
+      .replace(/[×·]/gu, String.raw`\times `)
+      .replace(/\bx\b/gu, String.raw`\times `)
+      .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉]/gu, (value) => value);
+    const latexOperator: Record<string, string> = {
+      '∈': String.raw`\in`,
+      '∉': String.raw`\notin`,
+      '⊂': String.raw`\subset`,
+      '⊆': String.raw`\subseteq`,
+      '=': '=',
+      '≈': String.raw`\approx`,
+      '≤': String.raw`\le`,
+      '≥': String.raw`\ge`,
+    };
+    const replacement = `$${left} ${latexOperator[operator] || operator} \\mathbb{R}^{${dimensions}}$`;
+    result += replacement;
+    cursor = bare.index + bare[0].length;
+  }
   return result;
 }
 
