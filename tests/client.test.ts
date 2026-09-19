@@ -405,6 +405,55 @@ test('client: DeepSeek 翻译请求关闭思考以降低首字延迟', async () 
   }
 });
 
+test('client: 翻译一致性校验会丢弃错误公式并只显示重试后的结果', async () => {
+  let requestCount = 0;
+  const server = http.createServer((req, res) => {
+    let requestBody = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => { requestBody += chunk; });
+    req.on('end', () => {
+      requestCount += 1;
+      const parsed = JSON.parse(requestBody);
+      const prompt = String(parsed.messages?.[1]?.content || '');
+      const token = prompt.match(/FORMULA_TOKEN_[0-9]+/)?.[0] || 'FORMULA_TOKEN_0';
+      const answer = requestCount === 1 ? 'x ∈ y' : `x ${token} y`;
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const port = (server.address() as any).port;
+  const chunks: string[] = [];
+  const completed: string[] = [];
+  try {
+    const result = await streamTranslate('x = y', {
+      endpointType: 'openai',
+      apiBaseUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'mock-key',
+      model: 'test-model',
+      targetLanguage: '简体中文',
+      systemPrompt: 'translate-only',
+      enableKaTeX: true,
+      cacheSize: 20,
+      autoTranslate: true,
+    }, {
+      onChunk: (delta) => chunks.push(delta),
+      onDone: (full) => completed.push(full),
+      onError: (err) => assert.fail(`重试后不应触发错误: ${err.message}`),
+    });
+
+    assert.equal(requestCount, 2);
+    assert.equal(result, 'x = y');
+    assert.deepEqual(chunks, ['x = y']);
+    assert.deepEqual(completed, ['x = y']);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 test('client: Gemini 原生端点发送 inlineData 图片 part', async () => {
   let requestBody = '';
   let requestUrl = '';
@@ -581,6 +630,69 @@ rl.on('line', (line) => {
     shutdownAgySession();
     if (previousStarts === undefined) delete process.env.AGY_SHARED_STARTS;
     else process.env.AGY_SHARED_STARTS = previousStarts;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('client: Agy 翻译公式校验失败时重试且不展示错误首轮', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const os = await import('node:os');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-translate-guard-'));
+  const mockAgyScript = path.join(tmpDir, 'mock-agy.cjs');
+  fs.writeFileSync(
+    mockAgyScript,
+    `#!/usr/bin/env node
+const readline = require('readline');
+let turns = 0;
+process.stdout.write(JSON.stringify({ event: 'init', init: {} }) + '\\n');
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  if (!line.trim()) return;
+  try {
+    const data = JSON.parse(line);
+    if (data.event !== 'user') return;
+    turns += 1;
+    const content = data.message?.content || '';
+    const token = content.match(/FORMULA_TOKEN_[0-9]+/)?.[0] || 'FORMULA_TOKEN_0';
+    const answer = turns === 1 ? 'x ∈ y' : 'x ' + token + ' y';
+    process.stdout.write(JSON.stringify({
+      event: 'step_update',
+      step_update: { step_type: 'agent_response', text_delta: answer }
+    }) + '\\n');
+    process.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS' } }) + '\\n');
+  } catch (_) {}
+});
+`,
+    { mode: 0o755 }
+  );
+
+  const config: PluginConfig = {
+    endpointType: 'agy',
+    apiBaseUrl: '',
+    apiKey: '',
+    model: 'test-model',
+    agyPath: mockAgyScript,
+    targetLanguage: '简体中文',
+    systemPrompt: '',
+    enableKaTeX: true,
+    cacheSize: 20,
+    autoTranslate: true,
+  };
+  const chunks: string[] = [];
+  const completed: string[] = [];
+  try {
+    const result = await streamTranslate('x = y', config, {
+      onChunk: (delta) => chunks.push(delta),
+      onDone: (full) => completed.push(full),
+      onError: (err) => assert.fail(`Agy 重试后不应触发错误: ${err.message}`),
+    });
+    assert.equal(result, 'x = y');
+    assert.deepEqual(chunks, ['x = y']);
+    assert.deepEqual(completed, ['x = y']);
+  } finally {
+    shutdownAgySession();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

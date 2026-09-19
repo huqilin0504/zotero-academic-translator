@@ -13,6 +13,7 @@ import { ImageAttachment } from './types';
 import { readPersistentJson, writePersistentJson } from './persistentStore';
 import { readSecureApiKeys, readSecureApiKeysAsync, writeSecureApiKeysAsync } from './secretStore';
 import { fetchProviderModels, ModelCatalogRequest } from './modelCatalog';
+import { validateTranslationFidelity } from './translationGuard';
 
 let listenerID: string | null = null;
 let popupHandler: any = null;
@@ -203,6 +204,43 @@ function setCachedText(cache: LRUCache<string, string>, key: string, text: strin
     if (!recent.has(entryKey)) delete normalizedStore[entryKey];
   }
   writePersistentJson(TRANSLATION_HISTORY_STORAGE_KEY, normalizedStore, doc);
+}
+
+function deleteCachedText(cache: LRUCache<string, string>, key: string, doc?: Document): void {
+  cache.delete(key);
+  const store = readPersistentJson<PersistedTextStore>(TRANSLATION_HISTORY_STORAGE_KEY, {}, doc);
+  if (!store || typeof store !== 'object' || Array.isArray(store)) return;
+  const persistentKey = compactPersistentKey(key);
+  if (!Object.prototype.hasOwnProperty.call(store, persistentKey)) return;
+  delete store[persistentKey];
+  writePersistentJson(TRANSLATION_HISTORY_STORAGE_KEY, store, doc);
+}
+
+/**
+ * 旧缓存也必须经过同一套公式一致性校验，避免修复插件后继续展示历史错译。
+ * 如果校验器补回了公式分隔符，则把修复后的安全文本重新写回缓存。
+ */
+function getValidatedTranslationCache(
+  cache: LRUCache<string, string>,
+  key: string,
+  source: string,
+  doc?: Document
+): string | undefined {
+  const cached = getCachedText(cache, key, doc);
+  if (!cached) return undefined;
+
+  const checked = validateTranslationFidelity(source, cached);
+  if (!checked.ok) {
+    deleteCachedText(cache, key, doc);
+    try {
+      Zotero.debug?.(`[Gemini Translator] 丢弃未通过原文一致性校验的翻译缓存: ${checked.errors.join('; ')}`);
+    } catch (_) {}
+    return undefined;
+  }
+
+  const safeText = checked.text || cached;
+  if (safeText !== cached) setCachedText(cache, key, safeText, doc);
+  return safeText;
 }
 
 function buildTranslationCacheKey(text: string, config: ReturnType<typeof loadConfig>): string {
@@ -737,7 +775,7 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
         const cacheKey = buildTranslationCacheKey(cleanedText, config);
 
         // 检查 0ms LRU 内存缓存
-        const cached = getCachedText(cache, cacheKey, doc);
+        const cached = getValidatedTranslationCache(cache, cacheKey, cleanedText, doc);
         if (cached) {
           controller?.setDone(cached, true, config.enableKaTeX);
           return;
