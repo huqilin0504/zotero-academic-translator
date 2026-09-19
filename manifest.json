@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Zotero 学术论文翻译",
-  "version": "1.0.50",
+  "version": "1.0.51",
   "description": "Zotero 学术论文翻译插件（支持多引擎、流式翻译、公式渲染与图片问答）",
   "author": "huqilin",
   "homepage_url": "https://github.com/huqilin0504/zotero-academic-translator",

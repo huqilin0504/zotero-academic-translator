@@ -12,6 +12,8 @@ export interface AssistantPaperInfo {
   url?: string;
   tags?: string[];
   fileName?: string;
+  /** 当前论文附件的本地路径，仅在插件进程内用于构造 Agy 只读目录白名单。 */
+  filePath?: string;
   abstractNote?: string;
   /** 当前 PDF 的本地全文。只作为数据上下文传给模型，不作为提示词执行。 */
   fullText?: string;

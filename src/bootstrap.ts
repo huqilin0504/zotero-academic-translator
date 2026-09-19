@@ -24,6 +24,9 @@ let activeAssistantAbortController: any = null;
 const assistantSidebars = new WeakMap<Document, AssistantSidebarController>();
 const assistantSidebarControllers = new Set<AssistantSidebarController>();
 const assistantPaperRefreshTokens = new WeakMap<Document, number>();
+// Agy 文件工具只拿到当前论文附件目录和本次上传图片目录；不把 Zotero
+// 主目录、用户 Home 或系统临时目录整体加入工作区。
+const assistantToolDirectories = new WeakMap<Document, string[]>();
 // Zotero 的全文索引按附件缓存；同一阅读器窗口反复打开助手时不要重复
 // 触发 PDF 提取。Map 只保留当前插件进程内的结果，不会把论文内容写入云端。
 const readerFullTextCache = new Map<number, string>();
@@ -302,6 +305,29 @@ async function prepareQuestionImages(
   }
 }
 
+function parentDirectory(filePath: string): string {
+  const normalized = String(filePath || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  const separator = normalized.lastIndexOf('/');
+  return separator > 0 ? normalized.slice(0, separator) : '';
+}
+
+function mergeAssistantToolDirectories(doc: Document, paths: string[], persist = false): string[] {
+  const current = assistantToolDirectories.get(doc) || [];
+  const next = [...current, ...paths.map(parentDirectory).filter(Boolean)];
+  // client.ts 会做最终的路径净化；这里仅限制数量并保持当前论文优先。
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const value of next) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(value);
+    if (unique.length >= 4) break;
+  }
+  if (persist) assistantToolDirectories.set(doc, unique);
+  return unique;
+}
+
 async function cleanupQuestionImages(images: ImageAttachment[]): Promise<void> {
   await Promise.all(images.map((image) => removeTempImageAttachment(image)));
 }
@@ -455,11 +481,18 @@ async function buildReaderPaperInfo(reader: any): Promise<AssistantPaperInfo> {
   const textAttachment = await findReaderTextAttachment(item, paperItem);
   const fullText = await readReaderFullText(textAttachment);
 
-  let fileName = '';
+  let filePath = '';
   try {
-    const filePath = await (item.getFilePathAsync ? item.getFilePathAsync() : item.getFilePath?.());
-    if (filePath) fileName = String(filePath).split(/[\\/]/).pop() || '';
+    filePath = String(await (textAttachment?.getFilePathAsync
+      ? textAttachment.getFilePathAsync()
+      : textAttachment?.getFilePath?.()) || '').trim();
   } catch (_) {}
+  if (!filePath) {
+    try {
+      filePath = String(await (item.getFilePathAsync ? item.getFilePathAsync() : item.getFilePath?.()) || '').trim();
+    } catch (_) {}
+  }
+  const fileName = filePath.split(/[\\/]/).pop() || '';
 
   return {
     itemID: paperItem.id || itemID,
@@ -471,6 +504,7 @@ async function buildReaderPaperInfo(reader: any): Promise<AssistantPaperInfo> {
     url: readItemField(paperItem, 'url'),
     tags: readItemTags(paperItem),
     fileName,
+    filePath,
     abstractNote: readItemField(paperItem, 'abstractNote'),
     fullText,
   };
@@ -487,11 +521,14 @@ function refreshReaderPaperInfo(
     .then((info) => {
       // renderToolbar 可能在异步读取元数据期间再次触发；只接受最后一次绑定结果。
       if (assistantPaperRefreshTokens.get(doc) !== token) return;
+      assistantToolDirectories.delete(doc);
+      mergeAssistantToolDirectories(doc, [info.filePath || ''], true);
       sidebar.setPaperInfo(info);
     })
     .catch((err: any) => {
       if (assistantPaperRefreshTokens.get(doc) !== token) return;
       Zotero.debug?.(`[Gemini Translator] AI 助手读取论文信息失败: ${err.message || err}`);
+      assistantToolDirectories.delete(doc);
       sidebar.setPaperInfo({ itemID: reader?.itemID, title: '论文信息读取失败' });
     });
 }
@@ -535,6 +572,10 @@ async function askAssistantSidebar(
   const AbortControllerClass = getAbortController(doc);
   const abortController = new AbortControllerClass();
   activeAssistantAbortController = abortController;
+  const toolDirectories = mergeAssistantToolDirectories(
+    doc,
+    imageAttachments.map((image) => image.path || '')
+  );
   try {
     await streamAsk(
       context,
@@ -568,7 +609,11 @@ async function askAssistantSidebar(
       },
       abortController.signal,
       doc,
-      imageAttachments
+      imageAttachments,
+      {
+        toolPolicy: 'assistant-read-search',
+        allowedDirectories: toolDirectories,
+      }
     );
   } catch (_) {
     // 错误已经通过 onError 呈现；用户主动关闭/切换时不显示失败。
@@ -834,6 +879,10 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
         const AbortControllerClass = getAbortController(doc);
         const abortController = new AbortControllerClass();
         activeQuestionAbortController = abortController;
+        const toolDirectories = mergeAssistantToolDirectories(
+          doc,
+          imageAttachments.map((image) => image.path || '')
+        );
 
         try {
           await streamAsk(
@@ -872,7 +921,11 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
               },
               abortController.signal,
               doc,
-              imageAttachments
+              imageAttachments,
+              {
+                toolPolicy: 'assistant-read-search',
+                allowedDirectories: toolDirectories,
+              }
             );
         } catch (_) {
           // 已在 onError 回调中处理；取消请求属于预期行为。

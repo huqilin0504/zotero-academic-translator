@@ -1,6 +1,6 @@
 # Zotero 学术论文翻译
 
-一个面向 Zotero PDF 阅读器的学术翻译与论文问答插件。当前发布版本为 **1.0.50**，仓库地址：
+一个面向 Zotero PDF 阅读器的学术翻译与论文问答插件。当前发布版本为 **1.0.51**，仓库地址：
 
 <https://github.com/huqilin0504/zotero-academic-translator>
 
@@ -47,15 +47,27 @@
 - 翻译 worker 和问答 worker 是两个不同的会话，避免 high/low 思考档位互相污染。
 - 本机 Agy 是否支持图片，取决于实际启动的模型和 Agy 配置；插件会把图片路径作为受限上下文交给 Agy，无法打开时不会凭空猜测。
 
+### Agy AI 助手的工具白名单与防护
+
+AI 助手和翻译使用不同的 Agy worker：翻译 worker 不开放工具；AI 助手 worker 只请求 `AnySearch` 和只读文件查看器。助手启动时强制使用沙箱、`plan` 模式和单轮超时，并且只把当前 PDF 附件目录、当前上传图片目录加入 `--add-dir`。插件还会在收到工具事件时再次检查 MCP 名称和文件路径；遇到命令、写入、浏览器、其他 MCP 或越界路径会立即终止该 worker，不会自动批准全部权限。
+
+Agy 的 AnySearch 白名单由本机 CLI 配置控制。Linux/macOS 配置文件通常是 `~/.gemini/antigravity-cli/settings.json`，Windows 通常是 `%USERPROFILE%\\.gemini\\antigravity-cli\\settings.json`。在 `permissions.allow` 中加入：
+
+```json
+"mcp(anysearch/*)"
+```
+
+插件不会使用 `--dangerously-skip-permissions`，运行时也不会替其他 Agy 会话提升权限。若 AnySearch 尚未被本机 Agy 允许，助手会安全失败并显示权限错误；翻译路径不受影响。
+
 ## 安装
 
 ### 从 GitHub Release 安装
 
-打开仓库的 [Releases](https://github.com/huqilin0504/zotero-academic-translator/releases) 页面，下载当前版本的 `zotero-academic-translator-1.0.50.xpi`，然后在 Zotero 中执行：
+打开仓库的 [Releases](https://github.com/huqilin0504/zotero-academic-translator/releases) 页面，下载当前版本的 `zotero-academic-translator-1.0.51.xpi`，然后在 Zotero 中执行：
 
 `工具` → `插件` → 齿轮图标 → `从文件安装插件…`
 
-也可以直接下载：[zotero-academic-translator-1.0.50.xpi](https://github.com/huqilin0504/zotero-academic-translator/releases/download/v1.0.50/zotero-academic-translator-1.0.50.xpi)
+也可以直接下载：[zotero-academic-translator-1.0.51.xpi](https://github.com/huqilin0504/zotero-academic-translator/releases/download/v1.0.51/zotero-academic-translator-1.0.51.xpi)
 
 ### 从源码打包
 
@@ -69,7 +81,7 @@ npm run package
 
 安装包会生成在：
 
-- `zotero-academic-translator-1.0.50.xpi`：带版本号的安装包；
+- `zotero-academic-translator-1.0.51.xpi`：带版本号的安装包；
 - `zotero-academic-translator.xpi`：同一安装包的稳定文件名副本。
 
 ## 设置

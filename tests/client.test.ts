@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import {
   buildAgyArgs,
+  buildAgyToolPolicyPrompt,
   buildQuestionPrompt,
   extractDeltaFromSSE,
   syncAgySession,
@@ -10,6 +11,7 @@ import {
   streamAsk,
   streamTranslate,
   resolveAgyModelForEffort,
+  normalizeAgyToolDirectories,
 } from '../src/client';
 import { PluginConfig } from '../src/types';
 
@@ -34,7 +36,39 @@ test('client: extractDeltaFromSSE 解析结束符与空行', () => {
 test('client: Agy 启动参数禁止自动批准工具权限', () => {
   const args = buildAgyArgs('gemini-test');
   assert.equal(args.includes('--dangerously-skip-permissions'), false);
+  assert.equal(args.includes('--sandbox'), true);
+  assert.equal(args.includes('--print-timeout'), true);
   assert.deepEqual(args.slice(-2), ['--mode', 'plan']);
+});
+
+test('client: AI 助手只开放沙箱、论文目录和 AnySearch 白名单', () => {
+  const args = buildAgyArgs('gemini-test', 'high', '', {
+    toolPolicy: 'assistant-read-search',
+    allowedDirectories: [
+      '/home/test/Zotero/storage/ABC',
+      '/home/test',
+      '/tmp',
+      '../secret',
+      '/home/test/Zotero/storage/ABC',
+    ],
+  });
+  assert.equal(args.includes('--dangerously-skip-permissions'), false);
+  assert.equal(args.includes('--sandbox'), true);
+  assert.equal(args[args.indexOf('--add-dir') + 1], '/home/test/Zotero/storage/ABC');
+  assert.equal(args.includes('/home/test'), false);
+  assert.equal(args.includes('/tmp'), false);
+  assert.equal(args.includes('../secret'), false);
+  assert.match(buildAgyToolPolicyPrompt({
+    toolPolicy: 'assistant-read-search',
+    allowedDirectories: ['/home/test/Zotero/storage/ABC'],
+  }), /allowedMcpServer/);
+});
+
+test('client: Agy 工具目录净化拒绝根目录和父目录跳转', () => {
+  assert.deepEqual(
+    normalizeAgyToolDirectories(['/home/user', '/home/user/paper', '/', '/tmp', '../x', 'relative']),
+    ['/home/user/paper']
+  );
 });
 
 test('client: Agy 启动参数可以恢复已有 conversation ID', () => {
@@ -1088,6 +1122,197 @@ rl.on('line', (line) => {
       onError: (err) => assert.fail(err.message),
     });
     assert.equal(second, 'ok:second');
+  } finally {
+    worker.kill();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('client: AI 助手收到未允许的工具事件时 fail-closed 并终止 worker', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const os = await import('node:os');
+  const { AgyWorker } = await import('../src/client');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-tool-guard-'));
+  fs.mkdirSync(path.join(tmpDir, 'paper'));
+  const mockAgyScript = path.join(tmpDir, 'mock-agy.cjs');
+  fs.writeFileSync(
+    mockAgyScript,
+    `#!/usr/bin/env node
+const readline = require('readline');
+process.stdout.write(JSON.stringify({ event: 'init', init: {} }) + '\\n');
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  if (!line.trim()) return;
+  process.stdout.write(JSON.stringify({
+    event: 'step_update',
+    step_update: { step_type: 'tool_call', tool_name: 'run_command' }
+  }) + '\\n');
+});
+`,
+    { mode: 0o755 }
+  );
+
+  const worker = new AgyWorker(mockAgyScript, 'test-model', 'high', '', undefined, {
+    toolPolicy: 'assistant-read-search',
+    allowedDirectories: [path.join(tmpDir, 'paper')],
+    turnTimeoutMs: 1000,
+  });
+  let errorMessage = '';
+  await worker.start();
+  try {
+    await assert.rejects(
+      worker.sendTurn('try a command', {
+        onChunk: () => {},
+        onDone: () => {},
+        onError: (err) => { errorMessage = err.message; },
+      }),
+      /工具调用已被插件拦截/
+    );
+    assert.match(errorMessage, /run_command/);
+  } finally {
+    worker.kill();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('client: AI 助手文件工具只能读取白名单目录', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const os = await import('node:os');
+  const { AgyWorker } = await import('../src/client');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-file-guard-'));
+  const paperDir = path.join(tmpDir, 'paper');
+  fs.mkdirSync(paperDir);
+  const mockAgyScript = path.join(tmpDir, 'mock-agy.cjs');
+  fs.writeFileSync(
+    mockAgyScript,
+    `#!/usr/bin/env node
+const readline = require('readline');
+process.stdout.write(JSON.stringify({ event: 'init', init: {} }) + '\\n');
+readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  const data = JSON.parse(line);
+  if (data.event !== 'user') return;
+  const allowed = String(data.message?.content || '').includes('allowed');
+  const target = allowed ? ${JSON.stringify(path.join(paperDir, 'paper.pdf'))} : '/home/other/private.txt';
+  process.stdout.write(JSON.stringify({
+    event: 'step_update',
+    step_update: { step_type: 'tool_call', tool_name: 'view_file', args: { path: target } }
+  }) + '\\n');
+  if (allowed) {
+    process.stdout.write(JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'ok' } }) + '\\n');
+    process.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS' } }) + '\\n');
+  }
+});
+`,
+    { mode: 0o755 }
+  );
+
+  const worker = new AgyWorker(mockAgyScript, 'test-model', 'high', '', undefined, {
+    toolPolicy: 'assistant-read-search',
+    allowedDirectories: [paperDir],
+    turnTimeoutMs: 1000,
+  });
+  await worker.start();
+  try {
+    assert.equal(await worker.sendTurn('allowed file', {
+      onChunk: () => {},
+      onDone: () => {},
+      onError: (err) => assert.fail(err.message),
+    }), 'ok');
+    await assert.rejects(
+      worker.sendTurn('outside file', {
+        onChunk: () => {},
+        onDone: () => {},
+        onError: () => {},
+      }),
+      /目标路径不在当前论文\/图片白名单内/
+    );
+  } finally {
+    worker.kill();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('client: AnySearch MCP 调用通过服务名白名单', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const os = await import('node:os');
+  const { AgyWorker } = await import('../src/client');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-anysearch-guard-'));
+  const mockAgyScript = path.join(tmpDir, 'mock-agy.cjs');
+  fs.writeFileSync(
+    mockAgyScript,
+    `#!/usr/bin/env node
+const readline = require('readline');
+process.stdout.write(JSON.stringify({ event: 'init', init: {} }) + '\\n');
+readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  const data = JSON.parse(line);
+  if (data.event !== 'user') return;
+  process.stdout.write(JSON.stringify({ event: 'step_update', step_update: {
+    step_type: 'tool_call', tool_name: 'call_mcp_tool', args: { server_name: 'anysearch', tool_name: 'search' }
+  }}) + '\\n');
+  process.stdout.write(JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'search ok' } }) + '\\n');
+  process.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS' } }) + '\\n');
+});
+`,
+    { mode: 0o755 }
+  );
+
+  const worker = new AgyWorker(mockAgyScript, 'test-model', 'high', '', undefined, {
+    toolPolicy: 'assistant-read-search',
+    turnTimeoutMs: 1000,
+  });
+  await worker.start();
+  try {
+    assert.equal(await worker.sendTurn('search', {
+      onChunk: () => {},
+      onDone: () => {},
+      onError: (err) => assert.fail(err.message),
+    }), 'search ok');
+  } finally {
+    worker.kill();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('client: Agy 单轮超时会回收 worker，避免权限请求永久挂起', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const os = await import('node:os');
+  const { AgyWorker } = await import('../src/client');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-tool-timeout-'));
+  fs.mkdirSync(path.join(tmpDir, 'paper'));
+  const mockAgyScript = path.join(tmpDir, 'mock-agy.cjs');
+  fs.writeFileSync(
+    mockAgyScript,
+    `#!/usr/bin/env node
+const readline = require('readline');
+process.stdout.write(JSON.stringify({ event: 'init', init: {} }) + '\\n');
+readline.createInterface({ input: process.stdin }).on('line', () => {});
+`,
+    { mode: 0o755 }
+  );
+
+  const worker = new AgyWorker(mockAgyScript, 'test-model', 'high', '', undefined, {
+    toolPolicy: 'assistant-read-search',
+    allowedDirectories: [path.join(tmpDir, 'paper')],
+    turnTimeoutMs: 25,
+  });
+  await worker.start();
+  try {
+    await assert.rejects(
+      worker.sendTurn('hang', {
+        onChunk: () => {},
+        onDone: () => {},
+        onError: () => {},
+      }),
+      /本轮调用超时/
+    );
   } finally {
     worker.kill();
     fs.rmSync(tmpDir, { recursive: true, force: true });
