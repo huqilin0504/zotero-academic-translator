@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
-# Downstream patch helper for PDFMathTranslate/pdf2zh. See
-# THIRD_PARTY_NOTICES.md for the upstream project, license, and distribution
-# boundary. Copyright (c) 2026 huqilin for the patch changes in this file.
+# Downstream pdf2zh patch helper.
 """Keep text embedded in pdf2zh Form XObjects used by paper figures.
 
 pdf2zh removes page-level text and lays it out again after translation. A

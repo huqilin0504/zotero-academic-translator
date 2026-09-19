@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
-# Downstream patch helper for PDFMathTranslate/pdf2zh. See
-# THIRD_PARTY_NOTICES.md for the upstream project, license, and distribution
-# boundary. Copyright (c) 2026 huqilin for the patch changes in this file.
+# Downstream pdf2zh patch helper.
 """Patch pdf2zh's text reflow for Chinese PDF output.
 
 The upstream layout code only wrapped translated text when the source line
