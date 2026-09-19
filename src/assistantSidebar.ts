@@ -529,6 +529,19 @@ export function createAssistantSidebar(
   resultSection.appendChild(resultHeader);
   resultSection.appendChild(conversationResizeHandle);
   resultSection.appendChild(resultContent);
+  const scrollLatest = doc.createElement('button');
+  scrollLatest.type = 'button';
+  scrollLatest.className = 'gemini-assistant-scroll-latest';
+  scrollLatest.hidden = true;
+  scrollLatest.title = '回到底部';
+  scrollLatest.setAttribute('aria-label', '回到底部');
+  scrollLatest.appendChild(createAssistantSvgIcon(
+    doc,
+    'gemini-assistant-scroll-latest-icon',
+    '0 0 24 24',
+    'M12 5v14m0 0-6-6m6 6 6-6'
+  ));
+  resultSection.appendChild(scrollLatest);
   scroll.appendChild(resultSection);
 
   const composer = doc.createElement('form');
@@ -802,10 +815,24 @@ export function createAssistantSidebar(
     }
   };
 
+  const updateScrollLatestVisibility = (): void => {
+    const distanceToBottom = resultContent.scrollHeight - resultContent.scrollTop - resultContent.clientHeight;
+    scrollLatest.hidden = resultSection.hidden || distanceToBottom <= 28;
+  };
+
   const scrollConversationToBottom = (): void => {
     // 论文信息和当前选区固定；只有对话列表拥有独立滚动条。
     resultContent.scrollTop = resultContent.scrollHeight;
+    updateScrollLatestVisibility();
   };
+
+  resultContent.addEventListener('scroll', updateScrollLatestVisibility);
+  scrollLatest.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    resultContent.scrollTop = resultContent.scrollHeight;
+    updateScrollLatestVisibility();
+  });
 
   const getConversationCopyText = (): string => {
     const turns = conversationHistory.slice();
