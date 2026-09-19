@@ -975,8 +975,6 @@
       locks.unshift({
         token,
         source: match.raw,
-        // raw 已经包含原文的 $...$, \(...\), \[...\] 或环境分隔符，
-        // 必须原样恢复，不能再次套一层 $$。
         kind: "explicit"
       });
       protectedText = protectedText.slice(0, match.start) + token + protectedText.slice(match.end);
@@ -1302,7 +1300,6 @@ ${userPrompt}` }];
       "--effort",
       effort,
       "--disable-slash-commands",
-      // 任何 Agy 会话都进入沙箱；AI 助手的目录白名单由 --add-dir 再收窄。
       "--sandbox",
       "--print-timeout",
       `${Math.ceil(normalizedOptions.turnTimeoutMs / 1e3)}s`
@@ -1565,11 +1562,6 @@ ${text2}`.trim().slice(-2e3);
       }
       return "";
     }
-    /**
-     * 对 Agy 的工具事件做第二层 fail-closed 检查。
-     * 权限配置/沙箱是第一层；如果 CLI 仍然发出未允许的 MCP、命令或写文件
-     * 事件，插件立即终止当前 worker，避免继续执行后续轮次。
-     */
     isForbiddenToolEvent(data) {
       if (this.toolOptions.toolPolicy !== "assistant-read-search" || !data || data.event === "init") {
         return false;
@@ -17060,7 +17052,6 @@ ${text2}`.trim().slice(-2e3);
     return {
       start: index,
       end: close2 + closing.length,
-      // 环境本身（而不是只保留内部文本）交给 KaTeX，才能正确处理 aligned/matrix 的列结构。
       content: text2.slice(index, close2 + closing.length),
       displayMode: true,
       opening,
@@ -18186,7 +18177,6 @@ AI\uFF1A${answer}`;
       doi: String(info.doi || "").slice(0, 500),
       url: String(info.url || "").slice(0, 2e3),
       fileName: String(info.fileName || "").slice(0, 1e3),
-      // 全文已作为主要证据传入；存在全文时压缩元数据，避免它挤掉正文。
       abstractNote: String(info.abstractNote || "").slice(0, hasFullText ? 6e3 : 1e4),
       tags: (info.tags || []).map((tag) => String(tag).slice(0, 200)).slice(0, hasFullText ? 30 : 100)
     };
@@ -19006,10 +18996,8 @@ AI\uFF1A${answer}`;
   }
 
   // src/stylesString.ts
-  var PLUGIN_CSS = `/* Zotero 7 \u7FFB\u8BD1\u63D2\u4EF6 - \u8F7B\u91CF\u5DE5\u5177\u6761 UI \u89C4\u8303 */
-
+  var PLUGIN_CSS = `
 :root {
-  /* \u57FA\u7840\u51B7\u8272\u8C03\u4F53\u7CFB (Cool Slate & Titanium Blue) */
   --slate-50: #f8fafc;
   --slate-100: #f1f5f9;
   --slate-200: #e2e8f0;
@@ -19021,19 +19009,16 @@ AI\uFF1A${answer}`;
   --slate-800: #1e293b;
   --slate-900: #0f172a;
 
-  /* \u4E3B\u8272\u8C03 (\u51B7\u94B4\u84DD) */
   --cool-primary: #2563eb;
   --cool-primary-hover: #1d4ed8;
   --cool-primary-subtle: #eff6ff;
   --cool-primary-border: #bfdbfe;
 
-  /* \u529F\u80FD\u8272 */
   --cool-success: #059669;
   --cool-success-subtle: #ecfdf5;
   --cool-danger: #dc2626;
   --cool-danger-subtle: #fef2f2;
 
-  /* \u5212\u8BCD\u7FFB\u8BD1\u5361\u7247\u8BED\u4E49\u53D8\u91CF */
   --gemini-bg: #ffffff;
   --gemini-text: #0f172a;
   --gemini-text-secondary: #475569;
@@ -19047,14 +19032,12 @@ AI\uFF1A${answer}`;
   --gemini-error-bg: var(--cool-danger-subtle);
   --gemini-error-text: var(--cool-danger);
 
-  /* \u5168\u6587\u7FFB\u8BD1\u6A21\u6001\u5F39\u7A97\u8BED\u4E49\u53D8\u91CF */
   --modal-surface: #ffffff;
   --modal-container: #f1f5f9;
   --modal-on-surface: #0f172a;
   --modal-on-surface-variant: #475569;
   --modal-border: #e2e8f0;
   --modal-track: #e2e8f0;
-  /* Google Sans \u98CE\u683C\uFF1A\u4F18\u5148\u4F7F\u7528 Google Sans/Inter\uFF0C\u4E2D\u6587\u56DE\u9000\u5230 Noto Sans CJK\u3002 */
   --modal-font: "Google Sans", "Google Sans Text", Inter, "Noto Sans SC", "Noto Sans CJK SC", "Noto Sans", Roboto, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -19082,7 +19065,6 @@ AI\uFF1A${answer}`;
   }
 }
 
-/* \u5212\u9009\u5F39\u7A97\u5BBF\u4E3B\u5BB9\u5668\u5C3A\u5BF8\u4E0E\u95F4\u8DDD\u9002\u914D */
 .selection-popup.has-gemini-card,
 .selection-popup:has(.gemini-translate-card) {
   width: min(286px, calc(100vw - 16px)) !important;
@@ -19108,7 +19090,6 @@ AI\uFF1A${answer}`;
   border-top: 1px solid rgba(148, 163, 184, 0.18) !important;
 }
 
-/* \u5212\u8BCD\u7FFB\u8BD1\u5361\u7247\uFF1A\u8D34\u8FD1 Zotero \u539F\u751F\u5DE5\u5177\u6761\uFF0C\u4E0D\u4F7F\u7528 AI \u54C1\u724C\u80F6\u56CA */
 .gemini-translate-card {
   font-family: var(--modal-font);
   position: relative;
@@ -19150,7 +19131,6 @@ AI\uFF1A${answer}`;
   letter-spacing: 0;
 }
 
-/* \u72B6\u6001\u4FDD\u6301\u4E3A\u5185\u8054\u6587\u5B57\uFF0C\u4E0D\u518D\u4F7F\u7528\u80F6\u56CA\u5FBD\u7AE0 */
 .gemini-status {
   display: inline-flex;
   align-items: center;
@@ -19194,7 +19174,6 @@ AI\uFF1A${answer}`;
   gap: 2px;
 }
 
-/* \u53EA\u4FDD\u7559\u719F\u6089\u7684\u56FE\u6807\u52A8\u4F5C\uFF0C\u89E6\u5C4F/\u952E\u76D8\u4ECD\u6709\u8DB3\u591F\u547D\u4E2D\u9762\u79EF */
 .gemini-btn-icon {
   width: 22px;
   height: 22px;
@@ -19265,7 +19244,6 @@ AI\uFF1A${answer}`;
   overflow-wrap: anywhere;
 }
 
-/* \u6A21\u578B\u56DE\u7B54\u7684 Markdown\uFF1A\u4FDD\u7559\u5C42\u7EA7\u548C\u8282\u594F\uFF0C\u4F46\u63A7\u5236\u5728 Zotero \u5212\u8BCD\u5361\u7247\u7684\u5BC6\u5EA6\u5185\u3002 */
 .gemini-markdown {
   overflow-wrap: anywhere;
 }
@@ -19411,17 +19389,14 @@ AI\uFF1A${answer}`;
   overflow-wrap: anywhere;
 }
 
-/* \u7ED3\u679C\u5E03\u5C40\uFF1A\u9ED8\u8BA4\u53EA\u6709\u8BD1\u6587\uFF0C\u63D0\u95EE\u540E\u5207\u6362\u4E3A\u5DE6\u53F3\u53CC\u680F\u3002 */
 .gemini-result-columns {
   display: grid;
-  /* \u672A\u63D0\u95EE\u65F6\u53EA\u6709\u8BD1\u6587\uFF0C\u4E0D\u80FD\u63D0\u524D\u4E3A\u9690\u85CF\u7684\u56DE\u7B54\u9762\u677F\u9884\u7559\u534A\u5217\u3002 */
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 9px;
   min-width: 0;
 }
 
-/* \u517C\u5BB9\u65E7\u7684\u53CC\u680F\u7ED3\u679C\u6807\u8BB0\uFF1B\u5F53\u524D\u95EE\u7B54\u5165\u53E3\u4F7F\u7528\u72EC\u7ACB\u4FA7\u8FB9\u680F\uFF0C\u4E0D\u4F1A\u6269\u5BBD\u5BBF\u4E3B\u5F39\u7A97\u3002 */
 .gemini-translate-card.has-question .gemini-result-columns {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
@@ -19451,7 +19426,6 @@ AI\uFF1A${answer}`;
   padding: 7px 8px 8px;
 }
 
-/* \u63D0\u95EE\u8F93\u5165\u4E0E\u56DE\u7B54\uFF1A\u8F93\u5165\u533A\u8DE8\u6EE1\u6574\u5F20\u5361\u7247\uFF0C\u56DE\u7B54\u9762\u677F\u4F4D\u4E8E\u8BD1\u6587\u53F3\u4FA7\u3002 */
 .gemini-question-composer {
   display: flex;
   flex-direction: column;
@@ -19737,7 +19711,6 @@ AI\uFF1A${answer}`;
   border-color: var(--gemini-primary-border);
 }
 
-/* \u6D41\u5F0F\u7ED3\u679C\u53EA\u4FDD\u7559\u7EC6\u5149\u6807\uFF0C\u4E0D\u663E\u793A\u5927\u5757\u52A8\u753B\u88C5\u9970 */
 .gemini-cursor {
   display: inline-block;
   width: 1px;
@@ -19754,7 +19727,6 @@ AI\uFF1A${answer}`;
   50% { opacity: 0; }
 }
 
-/* \u9AA8\u67B6\u5C4F\uFF1A\u9759\u6001\u3001\u4F4E\u5BF9\u6BD4\u5EA6\uFF0C\u907F\u514D\u628A\u7FFB\u8BD1\u5361\u7247\u505A\u6210\u804A\u5929\u673A\u5668\u4EBA */
 .gemini-skeleton {
   display: flex;
   flex-direction: column;
@@ -19773,7 +19745,6 @@ AI\uFF1A${answer}`;
   width: 45%;
 }
 
-/* \u9519\u8BEF\u63D0\u793A */
 .gemini-error-box {
   background: var(--gemini-error-bg);
   color: var(--gemini-error-text);
@@ -19808,7 +19779,6 @@ AI\uFF1A${answer}`;
   border: 0 !important;
 }
 
-/* KaTeX \u6837\u5F0F\u517C\u5BB9 */
 .katex-mathml {
   display: none !important;
 }
@@ -19821,7 +19791,6 @@ AI\uFF1A${answer}`;
   font-size: 1.05em !important;
 }
 
-/* \u5168\u6587\u7FFB\u8BD1\u6A21\u6001\u5F39\u7A97 - \u6781\u7B80\u5706\u6DA6\u51B7\u8272\u8C03 */
 .gemini-modal-backdrop {
   position: fixed;
   top: 0;
@@ -19953,7 +19922,6 @@ AI\uFF1A${answer}`;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 
-/* \u80F6\u56CA\u836F\u4E38 Chips */
 .gemini-feature-chips {
   display: flex;
   flex-wrap: wrap;
@@ -19978,7 +19946,6 @@ AI\uFF1A${answer}`;
   }
 }
 
-/* \u8FDB\u5EA6\u6761 */
 .gemini-progress-container {
   background: var(--modal-container);
   border-radius: 18px;
@@ -20031,7 +19998,6 @@ AI\uFF1A${answer}`;
   margin-top: 8px;
 }
 
-/* \u5168\u80F6\u56CA\u836F\u4E38\u64CD\u4F5C\u6309\u94AE */
 .gemini-modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -20091,7 +20057,6 @@ AI\uFF1A${answer}`;
 }
 
 .gemini-toolbar-btn {
-  /* \u5DE5\u5177\u680F\u53EA\u663E\u793A\u7FFB\u8BD1\u56FE\u6807\uFF0C\u6587\u5B57\u4FDD\u7559\u5728 title/aria-label \u4E2D\u3002 */
   width: 28px !important;
   min-width: 28px !important;
   max-width: 28px !important;
@@ -20130,7 +20095,6 @@ AI\uFF1A${answer}`;
   color: var(--cool-primary);
 }
 
-/* \u5168\u6587\u7FFB\u8BD1\u540E\u53F0\u72B6\u6001\u680F\uFF1A\u8D34\u8FD1 Zotero \u5DE5\u5177\u680F\u7684\u5C0F\u578B\u4E0B\u62C9\u83DC\u5355 */
 .gemini-task-status {
   position: fixed;
   top: 10px;
@@ -20328,14 +20292,6 @@ AI\uFF1A${answer}`;
   line-height: 1.4;
 }
 
-/*
- * Zotero reader popover style
- *
- * Keep the plugin controls visually close to Zotero's reader settings panel:
- * compact rows, quiet separators, square controls, and one restrained accent
- * color.  This intentionally replaces the earlier rounded-card treatment
- * without changing the DOM or any interaction behavior.
- */
 :root {
   --zotero-popover-surface: #ffffff;
   --zotero-popover-subtle: #f5f6f7;
@@ -20362,7 +20318,6 @@ AI\uFF1A${answer}`;
   }
 }
 
-/* \u5212\u8BCD\u7FFB\u8BD1\u5361\u7247\uFF1A\u50CF\u9605\u8BFB\u5668\u5DE5\u5177\u9762\u677F\uFF0C\u800C\u4E0D\u662F\u804A\u5929\u6C14\u6CE1\u3002 */
 .gemini-translate-card {
   background: var(--zotero-popover-surface) !important;
   color: var(--zotero-popover-text);
@@ -20489,7 +20444,6 @@ AI\uFF1A${answer}`;
   font-size: 10.5px;
 }
 
-/* \u5168\u6587\u7FFB\u8BD1\u5F39\u7A97\uFF1A\u6CBF\u7528\u9605\u8BFB\u5668\u8BBE\u7F6E\u9762\u677F\u7684\u7D27\u51D1\u5206\u7EC4\u4E0E\u76F4\u89D2\u63A7\u4EF6\u3002 */
 .gemini-modal-backdrop {
   background: rgba(22, 27, 34, 0.18);
 }
@@ -20662,7 +20616,6 @@ AI\uFF1A${answer}`;
   color: var(--zotero-popover-muted);
 }
 
-/* \u540E\u53F0\u4EFB\u52A1\u4E0B\u62C9\u72B6\u6001\u680F\uFF1A\u540C\u4E00\u5957\u76F4\u89D2\u3001\u7EC6\u5206\u9694\u7EBF\u8BED\u8A00\u3002 */
 .gemini-task-status-toggle,
 .gemini-task-status-panel {
   border-radius: 3px;
@@ -20701,7 +20654,6 @@ AI\uFF1A${answer}`;
   background: var(--zotero-popover-accent);
 }
 
-/* Typography alignment: use Zotero/Firefox's native system-ui metrics. */
 :root {
   --zotero-popover-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Noto Sans", sans-serif;
   --zotero-popover-font-size: 13px;
@@ -20782,7 +20734,6 @@ AI\uFF1A${answer}`;
   font-size: 11px;
 }
 
-/* \u9632\u6B62 Zotero \u5BBF\u4E3B\u7684\u7A84\u680F/\u4E66\u5199\u6A21\u5F0F\u628A\u4E2D\u6587\u6807\u7B7E\u6324\u6210\u7AD6\u6392\u3002 */
 .selection-popup:has(.gemini-translate-card) {
   min-width: 286px !important;
 }
@@ -20838,7 +20789,6 @@ AI\uFF1A${answer}`;
   flex: 0 0 auto;
 }
 
-/* \u5212\u8BCD\u7FFB\u8BD1\u5BBF\u4E3B\uFF1A\u7FFB\u8BD1\u5361\u7247\u4FDD\u6301\u7A84\u5BBD\uFF0C\u95EE\u7B54\u9762\u677F\u4F5C\u4E3A\u53F3\u4FA7\u72EC\u7ACB\u6D6E\u5C42\u3002 */
 .gemini-translation-shell {
   position: relative;
   display: block;
@@ -20857,7 +20807,6 @@ AI\uFF1A${answer}`;
   box-sizing: border-box;
 }
 
-/* \u5361\u7247\u5185\u7684\u6807\u9898\u3001\u8BD1\u6587\u6807\u9898\u548C\u6B63\u6587\u5171\u7528\u540C\u4E00\u6761\u5DE6\u53F3\u8FB9\u754C\uFF1B\u957F\u5355\u8BCD/\u94FE\u63A5\u53EA\u80FD\u5728\u5185\u5BB9\u533A\u5185\u6298\u884C\u3002 */
 .gemini-translate-card,
 .gemini-translate-card .gemini-card-header,
 .gemini-translate-card .gemini-translation-pane,
@@ -20920,7 +20869,6 @@ AI\uFF1A${answer}`;
   writing-mode: horizontal-tb;
 }
 
-/* \u7531 ui.ts \u6839\u636E\u5B9E\u9645\u89C6\u53E3\u8BA1\u7B97\u504F\u79FB\uFF1B\u8FD9\u4E9B\u72B6\u6001\u53EA\u51B3\u5B9A\u6C34\u5E73\u951A\u70B9\uFF0C\u4E0D\u5141\u8BB8\u9762\u677F\u628A\u5BBF\u4E3B\u6491\u5BBD\u3002 */
 .gemini-question-panel.is-below {
   left: 0;
   right: auto;
@@ -20980,7 +20928,6 @@ AI\uFF1A${answer}`;
   max-height: 340px;
 }
 
-/* \u4FA7\u8FB9\u680F\u6253\u5F00\u65F6\u5141\u8BB8\u5B83\u6EA2\u51FA Zotero \u7684\u9009\u533A\u6D6E\u5C42\u8FB9\u754C\u3002 */
 .selection-popup:has(.gemini-question-panel:not([hidden])) {
   overflow: visible !important;
   z-index: 1000 !important;
@@ -20993,7 +20940,6 @@ AI\uFF1A${answer}`;
   }
 }
 
-/* \u95EE\u7B54\u662F\u5212\u8BCD\u5361\u7247\u7684\u4E3B\u64CD\u4F5C\uFF0C\u4FDD\u7559\u7D27\u51D1\u5C3A\u5BF8\u4F46\u660E\u786E\u663E\u793A\u6587\u5B57\u5165\u53E3\u3002 */
 .gemini-btn-question {
   width: auto;
   min-width: 40px;
@@ -21011,10 +20957,6 @@ AI\uFF1A${answer}`;
   line-height: 1;
 }
 
-/*
- * \u9009\u533A\u7FFB\u8BD1\u6700\u7EC8\u8986\u76D6\u5C42\uFF1A\u4FDD\u7559 Zotero \u7684\u7D27\u51D1\u8FB9\u6846\uFF0C\u4F46\u7ED9\u8BD1\u6587\u8DB3\u591F\u7684\u9605\u8BFB\u5BBD\u5EA6\u3002
- * \u8FD9\u4E9B\u89C4\u5219\u653E\u5728\u6587\u4EF6\u672B\u5C3E\uFF0C\u8986\u76D6\u524D\u9762\u4E3A\u65E7\u7A84\u5361\u7247\u4FDD\u7559\u7684\u517C\u5BB9\u89C4\u5219\u3002
- */
 .selection-popup.has-gemini-card,
 .selection-popup:has(.gemini-translate-card) {
   width: min(360px, calc(100vw - 16px)) !important;
@@ -21041,7 +20983,6 @@ AI\uFF1A${answer}`;
   scrollbar-gutter: stable;
 }
 
-/* \u5E38\u9A7B AI \u52A9\u624B\uFF1A\u56FA\u5B9A\u5728\u5F53\u524D PDF \u9605\u8BFB\u5668\u53F3\u4FA7\uFF0C\u89C6\u89C9\u4E0A\u6CBF\u7528 Zotero \u7684\u8BBE\u7F6E\u9762\u677F\u3002 */
 .gemini-assistant-toolbar-btn {
   width: 28px !important;
   min-width: 28px !important;
@@ -21082,7 +21023,6 @@ AI\uFF1A${answer}`;
   writing-mode: horizontal-tb;
 }
 
-/* \u4FA7\u680F\u5DE6\u8FB9\u7684\u53EF\u62D6\u62FD\u8FB9\u754C\uFF1B\u6269\u5927\u547D\u4E2D\u533A\u4F46\u4E0D\u906E\u6321\u8BBA\u6587\u6B63\u6587\u3002 */
 .gemini-assistant-resize-handle {
   position: absolute;
   z-index: 2;
@@ -21121,7 +21061,6 @@ AI\uFF1A${answer}`;
   display: none !important;
 }
 
-/* \u7531 bootstrap.ts \u5728\u5BBD\u5C4F\u9605\u8BFB\u5668\u4E0A\u52A8\u6001\u8BBE\u7F6E right/margin-right\u3002 */
 .gemini-assistant-reader-reflow {
   transition: right 160ms ease, inset-inline-end 160ms ease, margin-right 160ms ease;
 }
@@ -21624,7 +21563,6 @@ AI\uFF1A${answer}`;
   }
 }
 
-/* AI \u52A9\u624B Gemini \u98CE\u683C\uFF1A\u4FDD\u7559\u8BBA\u6587\u4FE1\u606F\uFF0C\u4E0A\u5C42\u52A8\u4F5C\u8F7B\u91CF\u5316\uFF0C\u8F93\u5165\u533A\u53D8\u4E3A\u5706\u89D2\u5BF9\u8BDD\u6846\u3002 */
 .gemini-assistant-header {
   min-height: 44px;
   padding: 0 10px 0 8px;
@@ -21706,7 +21644,6 @@ AI\uFF1A${answer}`;
   user-select: none;
 }
 
-/* \u8BBA\u6587\u4FE1\u606F\u6309\u7528\u6237\u8981\u6C42\u4FDD\u6301\u539F\u6765\u7684\u9876\u90E8\u6837\u5F0F\uFF1B\u6807\u9898\u884C\u672C\u8EAB\u5C31\u662F\u4FE1\u606F\u5757\u7684\u8D77\u70B9\u3002 */
 .gemini-assistant-paper-summary {
   display: none;
 }
@@ -21943,8 +21880,6 @@ AI\uFF1A${answer}`;
   text-align: right;
 }
 
-/* AI \u52A9\u624B\u804A\u5929\u5F0F\u9605\u8BFB\u5E03\u5C40\uFF1A\u56DE\u7B54\u533A\u4FDD\u6301\u5E72\u51C0\u7684\u767D\u5E95\u6D88\u606F\u6D41\uFF0C\u63A5\u8FD1 Zotero
-   \u5185\u7F6E\u9605\u8BFB\u9762\u677F\u548C\u53C2\u8003\u56FE\u4E2D\u7684\u8FDE\u7EED\u5BF9\u8BDD\uFF0C\u800C\u4E0D\u662F\u4E00\u7EC4\u76F8\u4E92\u5D4C\u5957\u7684\u5361\u7247\u3002 */
 .gemini-assistant-sidebar {
   background: var(--zotero-popover-surface, #fff);
   border-left-color: var(--zotero-popover-border, #dfe3e8);
@@ -22259,9 +22194,6 @@ def _destination_point(source_link, source_page):
     point = source_link.get("to")
     if point is not None:
         return point
-    # PyMuPDF exposes named FitR/XYZ destinations as a PDF destination string
-    # instead of a Point. PDF coordinates use a bottom-left origin, while
-    # insert_link expects the top-left page coordinate system.
     destination = source_link.get("dest")
     if not isinstance(destination, str):
         return None
@@ -22285,7 +22217,6 @@ def _clip_rect(rect, page_rect):
 
 
 def _source_page_targets(kind, link, source_count):
-    # A GOTOR link's page belongs to a remote file and must not be remapped.
     if kind not in (fitz.LINK_GOTO, fitz.LINK_NAMED):
         return None
     page = link.get("page")
@@ -22303,9 +22234,6 @@ def _build_link(source_link, source_page, target_page, source_count, page_map):
     if rect is None:
         return None
 
-    # Named PDF destinations are not stable after pdf2zh interleaves pages.
-    # Convert those with a concrete page to a direct GOTO link, which works in
-    # Zotero's reader and keeps the destination on the matching translated page.
     mapped_source_page = _source_page_targets(kind, source_link, source_count)
     if mapped_source_page is not None:
         mapped_target_page = page_map.get(mapped_source_page)
@@ -22428,9 +22356,6 @@ def repair(source_path, target_path, mode):
         page = source[source_index]
         source_links.append(list(page.get_links()))
 
-    # pdf2zh's dual output is [original 1, translated 1, original 2, ...].
-    # Rebuild links on both halves so either side of the bilingual PDF remains
-    # navigable. Mono output has only one translated page per source page.
     translated_targets = _page_map(source_count, target_count, mode, True)
     original_targets = _page_map(source_count, target_count, mode, False)
     page_expectations = {}
@@ -23055,8 +22980,6 @@ if __name__ == "__main__":
       mode: request.mode,
       endpointType: request.config.endpointType,
       apiBaseUrl: request.config.apiBaseUrl,
-      // 旧版 chat/reasoner 与当前 deepseek-flash 是同一条迁移路径；
-      // 统一后，重启或升级不会因为模型别名不同而错过同一输出任务的去重。
       model: normalizeModelForEndpoint(request.config.endpointType, request.config.model),
       targetLanguage: request.config.targetLanguage
     });
@@ -23988,8 +23911,6 @@ if __name__ == "__main__":
         name: image.name,
         mimeType: image.mimeType,
         size: image.size,
-        // HTTP 端点用 dataUrl 的尾部做轻量指纹；Agy 不保留 dataUrl，只能
-        // 使用本次临时路径，宁可少命中缓存，也不能让同名同大小图片串答案。
         dataFingerprint: image.dataUrl ? `${image.dataUrl.length}:${image.dataUrl.slice(-96)}` : `${image.path || ""}:${image.size}`
       }))
     });
@@ -24282,9 +24203,6 @@ ${extracted}` : extracted;
   }
   function findAssistantLayoutTarget(doc) {
     const selectors = [
-      // Zotero reader.html owns the PDF iframe inside this flex viewport.
-      // Reflowing it moves the complete page/spread instead of shifting an
-      // inner PDF.js element underneath the assistant.
       "#split-view",
       ".split-view",
       "#primary-view",

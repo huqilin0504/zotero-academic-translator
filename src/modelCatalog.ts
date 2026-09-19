@@ -116,7 +116,6 @@ function parseModels(endpoint: string, payload: any): ModelOption[] {
   }));
 }
 
-/** Fetch the provider's current model list without ever putting the key in the URL. */
 export async function fetchProviderModels(config: ModelCatalogRequest): Promise<ModelCatalogResult> {
   const endpoint = String(config.endpointType || '').trim().toLowerCase();
   if (endpoint === 'agy') {

@@ -40,8 +40,6 @@
     return normalized;
   }
 
-  // 供应商切换时展示与其接口匹配的常用模型。模型名仍允许自定义，避免
-  // 本地 Ollama/Agy 的用户被静态列表限制；DeepSeek/Gemini 列表来自各自官方模型目录。
   const MODEL_CATALOG = {
     deepseek: [
       { value: 'deepseek-flash', label: 'deepseek-flash（快速 / 多模态）' },
@@ -94,13 +92,9 @@
     } else if (config.endpointType === 'gemini' && /^(deepseek-|qwen|llama|ollama|gpt-|claude|agy-)/.test(model)) {
       config.model = GEMINI_MODEL;
     }
-    // API Key 不再从 prefs.js 读取。运行时桥接会从 Zotero 的登录管理器
-    // 注入对应供应商的密钥；若插件尚未启动，保留旧字段只用于一次性迁移。
     try {
       const secure = Zotero.GeminiTranslatorRuntime?.getApiKeys?.();
       if (secure?.available) {
-        // 启动迁移尚未完成时仍保留旧字段，随后 writeConfig 会把它移入
-        // 登录管理器；正常安装的 prefs.js 已经是空字段，则结果仍为空。
         config.deepseekApiKey = String(secure.deepseekApiKey || config.deepseekApiKey || '').trim();
         config.geminiApiKey = String(secure.geminiApiKey || config.geminiApiKey || '').trim();
         config.apiKey = providerApiKey(config, config.endpointType);
@@ -122,8 +116,6 @@
     } else if (typeof runtime?.setApiKeys === 'function' && !(await runtime.setApiKeys({ deepseekApiKey: '', geminiApiKey: '' }))) {
       throw new Error('安全密钥存储不可用，未清理 API Key');
     }
-    // prefs.js 只保存非敏感配置；即使设置页桥接尚未就绪，也不把新输入的
-    // Key 写入磁盘。运行时桥接缺失时，上面的有 Key 分支会明确失败。
     const safeConfig = Object.assign({}, config, {
       apiKey: '',
       deepseekApiKey: '',
@@ -249,8 +241,6 @@
       if (result?.available && Array.isArray(result.models) && result.models.length) {
         remoteModelsByEndpoint[endpoint] = result.models;
         const preferred = currentModelValue();
-        // 远端列表是权威来源。旧版设置中的占位模型不能作为自定义模型
-        // 继续保留，否则全文 pdf2zh 会收到不存在的 model ID。
         const preferredIsKnown = result.models.some((item) => item.value === preferred);
         populateModelOptions(endpoint, preferredIsKnown ? preferred : result.models[0].value, result.models);
         setModelRefreshStatus(result.detail || `已读取 ${result.models.length} 个模型`);
@@ -391,7 +381,6 @@
       docAutoOpen: getCheckbox('gemini-translator-doc-auto-open'),
       deepseekApiKey,
       geminiApiKey,
-      // 兼容旧版运行时代码，但本地端点必须明确清空活动 Key。
       apiKey: endpoint === 'deepseek' ? deepseekApiKey : endpoint === 'gemini' ? geminiApiKey : '',
     });
 
@@ -419,8 +408,6 @@
     try {
       const nextConfig = collectConfig();
       await writeConfig(nextConfig);
-      // 设置页与后台插件脚本共享 Zotero 全局对象；保存后立即同步 Agy
-      // 常驻会话，避免必须重启 Zotero 或第一次划词时才启动。
       try {
         Zotero.GeminiTranslatorRuntime?.syncConfig?.(nextConfig);
       } catch (runtimeErr) {

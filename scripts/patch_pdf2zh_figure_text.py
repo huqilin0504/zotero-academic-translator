@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
-# Downstream pdf2zh patch helper.
 """Keep text embedded in pdf2zh Form XObjects used by paper figures.
 
 pdf2zh removes page-level text and lays it out again after translation. A
@@ -41,9 +40,6 @@ def patch(path: Path) -> bool:
             raise RuntimeError("pdfinterp.py layout changed: logger marker missing")
         source = source.replace(marker, helper, 1)
 
-    # Keep this patch idempotent while also upgrading older installations
-    # whose helper only handled top-level byte strings.  Nested arrays are
-    # required for TJ text arrays embedded in figure Form XObjects.
     old_helper = (
         "    if isinstance(value, (bytes, bytearray, memoryview)):\n"
         "        return \"<\" + bytes(value).hex() + \">\"\n"
@@ -102,7 +98,6 @@ def patch(path: Path) -> bool:
         1,
     )
 
-    # Do not serialize bytes with Python's b'...' repr; it is invalid PDF.
     old_args = (
         "p = \" \".join(\n"
         "                                    [\n"

@@ -34,7 +34,6 @@ const mockConfig: PluginConfig = {
 };
 
 test('docTranslator: buildPdf2zhArgs 参数构造', () => {
-  // 基础参数
   const args1 = buildPdf2zhArgs(
     {
       inputPdfPath: '/path/to/paper.pdf',
@@ -51,12 +50,9 @@ test('docTranslator: buildPdf2zhArgs 参数构造', () => {
   assert.ok(args1.includes('/path/to'));
   assert.ok(args1.includes('--service'));
   assert.ok(args1.includes('gemini'));
-  // 保留图表 Form XObject 的原始字形，避免翻译后图内文字消失。
   assert.ok(args1.includes('--skip-subset-fonts'));
-  // 未填写页码时不注入任何固定页数，默认翻译 PDF 全部页面。
   assert.equal(args1.includes('--pages'), false);
 
-  // 指定页码范围与自定义输出路径
   const args2 = buildPdf2zhArgs(
     {
       inputPdfPath: '/path/to/paper.pdf',
@@ -74,7 +70,6 @@ test('docTranslator: buildPdf2zhArgs 参数构造', () => {
   assert.ok(args2.includes('--service'));
   assert.ok(args2.includes('bing'));
 
-  // agy 端点路由
   const agyConfig: PluginConfig = {
     ...mockConfig,
     endpointType: 'agy',
@@ -104,16 +99,13 @@ test('docTranslator: 并发度限制与回车进度拆分', () => {
 });
 
 test('docTranslator: parsePdf2zhProgress 进度日志解析', () => {
-  // 空行
   assert.equal(parsePdf2zhProgress('   '), null);
 
-  // 版面分析阶段
   const pLayout = parsePdf2zhProgress('Loading DocLayout YOLO model for layout detection...');
   assert.ok(pLayout);
   assert.equal(pLayout?.stage, 'extract');
   assert.equal(pLayout?.percent, 15);
 
-  // tqdm 进度条解析
   const pTqdm = parsePdf2zhProgress(' 50%|██████████          | 2/4 [00:03<00:03,  1.67s/it]');
   assert.ok(pTqdm);
   assert.equal(pTqdm?.stage, 'translating');
@@ -121,7 +113,6 @@ test('docTranslator: parsePdf2zhProgress 进度日志解析', () => {
   assert.equal(pTqdm?.totalPages, 4);
   assert.equal(pTqdm?.percent, 50);
 
-  // 文本页码解析
   const pPage = parsePdf2zhProgress('Translating page 3/10 (formulas protected)');
   assert.ok(pPage);
   assert.equal(pPage?.stage, 'translating');
@@ -133,19 +124,16 @@ test('docTranslator: parsePdf2zhProgress 进度日志解析', () => {
   assert.equal(pBackendPage?.currentPage, 4);
   assert.equal(pBackendPage?.totalPages, 16);
 
-  // 排版回填阶段
   const pType = parsePdf2zhProgress('Typesetting Chinese fonts and reconstructing vector streams...');
   assert.ok(pType);
   assert.equal(pType?.stage, 'typesetting');
   assert.equal(pType?.percent, 90);
 
-  // 完成阶段
   const pDone = parsePdf2zhProgress('Successfully saved translated output file to sample-mono.pdf');
   assert.ok(pDone);
   assert.equal(pDone?.stage, 'done');
   assert.equal(pDone?.percent, 100);
 
-  // 启动参数里的 output= 不是完成信号，避免出现“第 9/17 页但 100%”。
   assert.equal(parsePdf2zhProgress("Namespace(files=['paper.pdf'], output='/tmp/out', thread=6)"), null);
 });
 
@@ -162,19 +150,15 @@ test('docTranslator: API 失败优先显示 HTTP/模型诊断而不是 tenacity 
 });
 
 test('docTranslator: getExpectedOutputPdfPath 输出文件名推导', () => {
-  // mono 模式（单语）
   const monoPath = getExpectedOutputPdfPath('/home/user/deep_learning.pdf', 'mono');
   assert.equal(monoPath, '/home/user/deep_learning-mono.pdf');
 
-  // dual 模式（双语）
   const dualPath = getExpectedOutputPdfPath('/home/user/deep_learning.pdf', 'dual');
   assert.equal(dualPath, '/home/user/deep_learning-dual.pdf');
 
-  // 自定义输出目录
   const customOutPath = getExpectedOutputPdfPath('/home/user/paper.pdf', 'mono', '/tmp/translated');
   assert.equal(customOutPath, '/tmp/translated/paper-mono.pdf');
 
-  // 无目录的相对路径也必须落到可写的临时目录，避免 pdf2zh 对空目录名调用 makedirs。
   assert.equal(resolveDocumentOutputDir('paper.pdf'), '/tmp');
   assert.equal(getExpectedOutputPdfPath('paper.pdf', 'mono'), '/tmp/paper-mono.pdf');
 });
@@ -300,8 +284,6 @@ console.log('Successfully saved translated output file');
       model: 'gemini-test',
     });
 
-    // 未传 outputDir 时，插件必须把源 PDF 所在目录显式传给 pdf2zh，
-    // 复现并防止 pdf2zh 1.9.x 的空目录名 FileNotFoundError。
     const nestedDir = path.join(tmpDir, 'nested');
     fs.mkdirSync(nestedDir);
     const resultWithoutOutput = await translateDocument(

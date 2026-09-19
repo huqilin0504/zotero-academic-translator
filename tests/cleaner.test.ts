@@ -27,7 +27,6 @@ test('cleaner: 不跨越段落边界拼接连字符', () => {
 
 test('cleaner: 保留公式中的减号与列表符', () => {
   const input = 'where x - \n y denotes difference';
-  // 单个字母或运算符不应被视作单词拼接
   assert.match(repairHyphenation(input), /x\s*-\s*y/);
 });
 

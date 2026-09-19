@@ -156,7 +156,6 @@ test('client: 图片附件以受限路径元数据加入 Agy 多模态提示', (
 });
 
 test('client: 端到端流式请求与回调测试 (Mock Server)', async () => {
-  // 搭建一个临时的本地 SSE Mock 服务器
   const server = http.createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -951,7 +950,6 @@ rl.on('line', (line) => {
 test('client: 请求中止 AbortController 测试', async () => {
   const server = http.createServer((_, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-    // 故意挂起不发送数据
   });
 
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
@@ -983,7 +981,6 @@ test('client: 请求中止 AbortController 测试', async () => {
       abortController.signal
     );
 
-    // 20ms 后主动中断
     setTimeout(() => {
       abortController.abort();
     }, 20);
@@ -1008,7 +1005,6 @@ test('client: AgyWorker 守护进程双向 stream-json 协议多轮复用测试'
     `#!/usr/bin/env node
 const readline = require('readline');
 
-// 输出 init 事件
 process.stdout.write(JSON.stringify({ event: 'init', init: {} }) + '\\n');
 
 const rl = readline.createInterface({ input: process.stdin });
@@ -1042,7 +1038,6 @@ rl.on('line', (line) => {
   await worker.start();
 
   try {
-    // 轮次 1
     const chunks1: string[] = [];
     const res1 = await worker.sendTurn('你好世界', {
       onChunk: (delta) => chunks1.push(delta),
@@ -1052,7 +1047,6 @@ rl.on('line', (line) => {
     assert.equal(res1, '译文:你好世界');
     assert.deepEqual(chunks1, ['译文:', '你好世界']);
 
-    // 轮次 2：同一个守护进程复用长连接，无需重新冷启动
     const chunks2: string[] = [];
     const res2 = await worker.sendTurn('极速翻译', {
       onChunk: (delta) => chunks2.push(delta),
@@ -1115,7 +1109,6 @@ rl.on('line', (line) => {
     firstAbort.abort();
     assert.equal(await first, '');
 
-    // 第一轮仍会在后台收到 result，随后第二轮应在同一个进程中继续执行。
     const second = await worker.sendTurn('second', {
       onChunk: () => {},
       onDone: () => {},

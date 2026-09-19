@@ -21,10 +21,8 @@ test('lruCache: 容量满时淘汰最久未使用项', () => {
   cache.set('2', 'two');
   cache.set('3', 'three');
 
-  // 访问 key 1，使其变为最近使用
   cache.get('1');
 
-  // 写入 key 4，此时最久未使用的是 key 2
   cache.set('4', 'four');
 
   assert.equal(cache.has('2'), false, 'Key 2 应该被淘汰');

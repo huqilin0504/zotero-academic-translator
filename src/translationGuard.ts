@@ -56,10 +56,6 @@ function isLikelyInlineDollarMath(content: string): boolean {
   return !/\s/u.test(content) && trimmed.length <= 80;
 }
 
-/**
- * 只定位已经存在分隔符的公式，避免翻译安全层依赖渲染器或改变渲染器
- * 的加载顺序。最终显示仍由 mathRenderer/KaTeX 负责。
- */
 function findNextExplicitMath(text: string, start = 0): ExplicitMathMatch | null {
   for (let index = Math.max(0, start); index < text.length; index += 1) {
     if (isEscaped(text, index)) continue;
@@ -162,13 +158,6 @@ function restoreLock(lock: FormulaLock): string {
   return lock.source;
 }
 
-/**
- * Protect source formulas before sending them to a translation model.
- *
- * The model is allowed to translate prose, but it must copy opaque formula
- * tokens exactly. This prevents semantic corrections such as changing an
- * equals sign into a membership operator.
- */
 export function createTranslationFidelityGuard(source: string): {
   enabled: boolean;
   sourceForModel: string;
@@ -198,8 +187,6 @@ export function createTranslationFidelityGuard(source: string): {
     locks.unshift({
       token,
       source: match.raw,
-      // raw 已经包含原文的 $...$, \(...\), \[...\] 或环境分隔符，
-      // 必须原样恢复，不能再次套一层 $$。
       kind: 'explicit',
     });
     protectedText = protectedText.slice(0, match.start) + token + protectedText.slice(match.end);
@@ -228,9 +215,6 @@ export function createTranslationFidelityGuard(source: string): {
     }
   );
 
-  // PDF 文本层经常把未加分隔符的公式和正文拼在同一行。即使整行无法
-  // 识别成公式，也必须把关系运算符和明显的数学符号锁住，防止模型把
-  // “=” 擅自改成 “∈” 这类语义变化，或删掉求和/积分等结构。
   protectedText = protectedText.replace(RELATION_SOURCE_PATTERN, (value: string) => {
     const token = 'FORMULA_TOKEN_' + locks.length;
     locks.push({ token, source: value, kind: 'symbol' });
@@ -242,8 +226,6 @@ export function createTranslationFidelityGuard(source: string): {
     return token;
   });
 
-  // 不同替换阶段的扫描顺序可能不同（例如先锁定“n stands for”，
-  // 再锁定前面的等号），最终必须按实际送给模型的文本顺序列出 token。
   const lockByToken = new Map(locks.map((lock) => [lock.token, lock]));
   const orderedLocks = Array.from(protectedText.matchAll(TOKEN_PATTERN), ([token]) => lockByToken.get(token))
     .filter((lock): lock is FormulaLock => Boolean(lock));

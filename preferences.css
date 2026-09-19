@@ -129,7 +129,6 @@ html|textarea.gemini-prefs-control {
   min-width: 96px;
 }
 
-/* Zotero reader settings language: compact rows and quiet separators. */
 .gemini-prefs-pane {
   max-width: 760px;
   padding: 14px 16px 18px;
@@ -210,7 +209,6 @@ html|textarea.gemini-prefs-control {
   min-width: 88px;
 }
 
-/* Match Zotero's native system UI font and control metrics. */
 .gemini-prefs-pane {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Noto Sans", sans-serif;
   font-size: 13px;
@@ -260,7 +258,6 @@ html|textarea.gemini-prefs-control {
   font-size: 13px;
 }
 
-/* 下拉卡片的选中项与卡片视觉中心对齐；输入框仍保持左对齐，便于阅读路径和模型名。 */
 html|select.gemini-prefs-control {
   display: block;
   box-sizing: border-box;

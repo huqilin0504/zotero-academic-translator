@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
-# Downstream pdf2zh patch helper.
 """Install a hard punctuation-preservation gate in pdf2zh's converter."""
 
 from __future__ import annotations
@@ -167,9 +166,6 @@ HELPERS = r'''        _PUNCTUATION_MAP = {
             return repaired + suffix
 
         def _punctuation_tokens(text: str):
-            # Formula and rich-text placeholders are structural data, not
-            # prose punctuation. Hyphens are ignored because PDF extraction
-            # inserts them at line wraps; technical terms remain in the text.
             text = re.sub(r"\{v\d+\}|</?b\d+>", "", text)
             text = re.sub(r"\.{3,}", "…", text)
             tokens = []
@@ -247,9 +243,6 @@ NEW_WORKER = '''                new = self.translator.translate(s)
                             try:
                                 new = self.translator.translate(s, ignore_cache=True)
                             except TypeError as retry_error:
-                                # Some custom translators do not expose the
-                                # ignore_cache keyword; do_translate bypasses
-                                # their cache without weakening the gate.
                                 if "ignore_cache" not in str(retry_error):
                                     raise
                                 new = self.translator.do_translate(s)

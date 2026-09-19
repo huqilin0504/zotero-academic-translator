@@ -1,7 +1,3 @@
-/**
- * 高性能内存 LRU (Least Recently Used) 缓存
- * 用于对已翻译文本提供 0ms 瞬间响应
- */
 export class LRUCache<K = string, V = string> {
   private capacity: number;
   private cache: Map<K, V>;
@@ -18,7 +14,6 @@ export class LRUCache<K = string, V = string> {
     if (!this.cache.has(key)) {
       return undefined;
     }
-    // 命中缓存，提升至最近使用（重新插入到队尾）
     const value = this.cache.get(key)!;
     this.cache.delete(key);
     this.cache.set(key, value);
@@ -29,7 +24,6 @@ export class LRUCache<K = string, V = string> {
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.capacity) {
-      // 淘汰最久未使用的元素（Map 键迭代器的第一个）
       const oldestKey = this.cache.keys().next().value;
       if (oldestKey !== undefined) {
         this.cache.delete(oldestKey);

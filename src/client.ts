@@ -4,10 +4,6 @@ import { getApiKeyForEndpoint, normalizeModelForEndpoint } from './config';
 import { readPersistentJson, writePersistentJson } from './persistentStore';
 import { createTranslationFidelityGuard } from './translationGuard';
 
-/**
- * 划词提问的固定系统约束。选中文本和问题都按不可信数据处理，避免论文内容
- * 中夹带的提示词改变助手行为。
- */
 export const DEFAULT_QUESTION_SYSTEM_PROMPT = `You are an academic reading assistant.
 Answer the user's question using the supplied paper full text, selected passage, and conversation history.
 For follow-up questions, use the previous conversation turns to resolve references such as "上一段" or "这个方法".
@@ -20,13 +16,8 @@ Preserve formulas, symbols, citations, and technical terms when they are relevan
 
 const MAX_QUESTION_TEXT_LENGTH = 2000;
 const MAX_SELECTED_CONTEXT_LENGTH = 12000;
-// AI 助手上下文包含论文全文、元数据、当前选区与最近对话；全文已经在
-// buildAssistantContext 中单独限长，这里再保留足够空间让常见论文完整进入请求。
 const MAX_ASSISTANT_CONTEXT_LENGTH = 120000;
 
-/**
- * 构造划词提问请求。使用 JSON 字符串承载边界内容，避免用户文本伪造结束标签。
- */
 export function buildQuestionPrompt(
   selectedText: string,
   question: string,
@@ -102,9 +93,6 @@ function buildGeminiParts(
   return parts;
 }
 
-/**
- * 解析单行 SSE 数据，提取增量文本
- */
 export function extractDeltaFromSSE(line: string, endpointType: 'openai' | 'gemini'): string | null {
   const trimmed = line.trim();
   if (!trimmed || !trimmed.startsWith('data:')) {
@@ -119,16 +107,13 @@ export function extractDeltaFromSSE(line: string, endpointType: 'openai' | 'gemi
   try {
     const json = JSON.parse(dataStr);
     if (endpointType === 'openai') {
-      // 适配标准 OpenAI / Ollama / LM Studio 结构
       const delta = json.choices?.[0]?.delta?.content;
       return typeof delta === 'string' ? delta : null;
     } else if (endpointType === 'gemini') {
-      // 适配 Google Gemini 原生 streamGenerateContent 结构
       const part = json.candidates?.[0]?.content?.parts?.[0]?.text;
       return typeof part === 'string' ? part : null;
     }
   } catch (e) {
-    // 忽略非完整 JSON 行
     return null;
   }
   return null;
@@ -148,18 +133,11 @@ interface ActiveTurn {
 
 export type AgyEffort = 'low' | 'medium' | 'high';
 
-/**
- * Agy 工具权限按调用场景隔离：翻译永远是 none，AI 助手才可使用
- * 只读文件查看器和 AnySearch。这里不提供“全量工具”模式，避免以后
- * 新增调用方时意外继承高权限。
- */
 export type AgyToolPolicy = 'none' | 'assistant-read-search';
 
 export interface AgyToolOptions {
   toolPolicy?: AgyToolPolicy;
-  /** 允许 Agy 只读查看的目录；只接受绝对路径，且会在构造参数时再次净化。 */
   allowedDirectories?: string[];
-  /** 单轮上限，防止工具权限请求或 MCP 网络异常无限挂起。 */
   turnTimeoutMs?: number;
 }
 
@@ -167,12 +145,6 @@ const DEFAULT_AGY_TURN_TIMEOUT_MS = 120000;
 const MAX_AGY_TURN_TIMEOUT_MS = 300000;
 const MAX_AGY_TOOL_DIRECTORIES = 4;
 
-/**
- * 将外部路径变成 Agy 的只读目录白名单。
- *
- * 不接受相对路径、父目录跳转、文件系统根目录和常见用户/系统根目录；
- * 这样即使上层误传了附件父目录，也不会把整个用户目录挂进沙箱。
- */
 export function normalizeAgyToolDirectories(directories: string[] = []): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
@@ -186,7 +158,6 @@ export function normalizeAgyToolDirectories(directories: string[] = []): string[
       '/', '/tmp', '/home', '/root', '/etc', '/usr', '/var', '/opt', '/bin', '/sbin',
       '/media', '/mnt',
     ]).has(lower) || isWindowsDriveRoot;
-    // /home/user、/media/user 这类用户根目录仍然过宽；具体论文目录可以继续下探。
     const segments = normalized.split('/').filter(Boolean);
     const isUserRoot = (
       (lower.startsWith('/home/') || lower.startsWith('/media/') || lower.startsWith('/mnt/'))
@@ -215,7 +186,6 @@ function normalizeAgyToolOptions(options: AgyToolOptions = {}): Required<AgyTool
   };
 }
 
-/** 给 AI 助手的工具边界再次注入模型上下文；路径只作为数据，不是可扩展指令。 */
 export function buildAgyToolPolicyPrompt(options: AgyToolOptions = {}): string {
   const normalized = normalizeAgyToolOptions(options);
   if (normalized.toolPolicy !== 'assistant-read-search') return '';
@@ -281,8 +251,6 @@ function clearAgyConversationId(workerKey: string): void {
   writePersistentJson(AGY_CONVERSATIONS_STORAGE_KEY, store);
 }
 
-// Agy 把部分模型的思考档位编码在模型名末尾，并校验它与 --effort 一致。
-// 例如 gemini-3.8-flash-low + --effort high 会在初始化前直接退出。
 const AGY_MODEL_VARIANTS = new Set([
   'gemini-3.8-flash-low',
   'gemini-3.8-flash-medium',
@@ -303,13 +271,6 @@ const AGY_FALLBACK_MODELS: Record<AgyEffort, string> = {
   high: 'gemini-3.8-flash-high',
 };
 
-/**
- * 让模型名和 Agy 的思考强度保持一致。
- *
- * 已知的 Gemini 档位直接切换同一模型族；如果用户保存的是带档位后缀、
- * 但 Agy 没有对应档位（例如 gpt-oss-120b-medium + high），使用可用的
- * Flash 档位作为兜底，避免进程在握手前退出。无后缀的自定义模型保持原样。
- */
 export function resolveAgyModelForEffort(model: string, effort: AgyEffort): string {
   const normalized = String(model || '').trim();
   if (!normalized) return AGY_FALLBACK_MODELS[effort];
@@ -348,7 +309,6 @@ export function buildAgyArgs(
     '--effort',
     effort,
     '--disable-slash-commands',
-    // 任何 Agy 会话都进入沙箱；AI 助手的目录白名单由 --add-dir 再收窄。
     '--sandbox',
     '--print-timeout',
     `${Math.ceil(normalizedOptions.turnTimeoutMs / 1000)}s`,
@@ -369,11 +329,6 @@ export function buildAgyArgs(
   return args;
 }
 
-/**
- * Agy 守护进程长连接与 stream-json 双向通信封装。
- * 普通划词翻译按端点、模型和 low 强度共用一个常驻会话，消除每次划选
- * 重新启动进程的冷启动开销；模型首字延迟仍取决于当前模型与本机/网络状态。
- */
 export class AgyWorker {
   private proc: any = null;
   private isNode = false;
@@ -484,7 +439,6 @@ export class AgyWorker {
       ? (this.toolOptions.allowedDirectories[0] || '/tmp')
       : '/tmp';
 
-    // 1. Zotero 7 原生环境 (Mozilla Subprocess XPCOM)
     if (Subprocess?.call) {
       let lastError: any = null;
       for (const command of getExecutableCandidates(this.agyBin)) {
@@ -518,7 +472,6 @@ export class AgyWorker {
       throw error;
     }
 
-    // 2. Node.js 测试环境 (node:child_process)
     if (typeof process !== 'undefined' && (process as any).versions?.node) {
       try {
         const nodeCp = 'node:child_process';
@@ -657,11 +610,6 @@ export class AgyWorker {
     return '';
   }
 
-  /**
-   * 对 Agy 的工具事件做第二层 fail-closed 检查。
-   * 权限配置/沙箱是第一层；如果 CLI 仍然发出未允许的 MCP、命令或写文件
-   * 事件，插件立即终止当前 worker，避免继续执行后续轮次。
-   */
   private isForbiddenToolEvent(data: any): boolean {
     if (this.toolOptions.toolPolicy !== 'assistant-read-search' || !data || data.event === 'init') {
       return false;
@@ -688,9 +636,7 @@ export class AgyWorker {
     ).toLowerCase();
     const isInvocation = /call|request|invoke|permission/.test(stepType)
       || Boolean(step?.args || step?.arguments || step?.input || step?.tool_call || step?.toolCall);
-    // 工具返回事件只包含结果时不重复拦截；真正的调用/权限事件必须先过路径检查。
     if (!isInvocation && /result|response|output/.test(stepType)) return false;
-    // Agy 内置查看器在不同版本中叫 read_file / view_file / file_viewer。
     const readOnlyFileTool = /(^|[^a-z])(read_file|readfile|view_file|file_viewer)([^a-z]|$)/.test(name);
     if (readOnlyFileTool) {
       const toolPaths = this.extractToolPaths(
@@ -774,7 +720,6 @@ export class AgyWorker {
           this.processNextTurn();
         }
       } catch (_) {
-        // 忽略非完整 JSON 行
       }
     }
   }
@@ -861,9 +806,6 @@ export class AgyWorker {
       }
 
       signal?.addEventListener('abort', () => {
-        // stream-json 没有可靠的当前轮次取消协议。当前轮次只能标记为
-        // 已取消并等待 result 事件收尾；不能终止进程，否则下一次划词
-        // 会被迫重新冷启动，破坏“所有划词翻译共用一个会话”的约定。
         if (this.currentTurn === turn) {
           if (!turn.settled) {
             turn.settled = true;
@@ -976,9 +918,6 @@ function getAgyWorkerKey(
   ].join('::');
 }
 
-/**
- * 获取或创建常驻 Agy 会话进程
- */
 export async function getOrCreateAgyWorker(
   config: PluginConfig,
   effort: AgyEffort = 'low',
@@ -1022,8 +961,6 @@ export async function getOrCreateAgyWorker(
   activeAgyWorkers.set(workerKey, worker);
   try {
     await worker.start();
-    // start() 只负责创建子进程；等待 init 握手后才算真正可用。
-    // 这样后台预热失败能被捕获并重试，首次划词也不会撞上半启动进程。
     await worker.readyPromise;
     if (worker.getConversationId()) saveAgyConversationId(workerKey, worker.getConversationId());
     return worker;
@@ -1034,8 +971,6 @@ export async function getOrCreateAgyWorker(
       throw e;
     }
 
-    // 云端会话可能已过期或被删除；清掉失效 ID 后只重试一次新会话，
-    // 避免每次 Zotero 启动都卡在同一个不可恢复的会话上。
     worker.kill();
     clearAgyConversationId(workerKey);
     worker = createWorker('');
@@ -1053,10 +988,6 @@ export async function getOrCreateAgyWorker(
   }
 }
 
-/**
- * 预热 Agy 守护进程（在 Zotero 启动或设置切换到 Agy 时调用）。
- * 该函数只安排后台工作，不阻塞 Zotero 启动；首次握手失败会指数退避重试。
- */
 export function prewarmAgySession(config: PluginConfig): void {
   if (config.endpointType !== 'agy') return;
 
@@ -1090,10 +1021,6 @@ export function prewarmAgySession(config: PluginConfig): void {
   })();
 }
 
-/**
- * 同步设置页中的引擎配置与后台会话。
- * 切到 Agy 时立即预热；切出 Agy 或更换路径/模型时停止旧 worker。
- */
 export function syncAgySession(config: PluginConfig): void {
   if (config.endpointType !== 'agy') {
     desiredAgyWorkerKey = null;
@@ -1111,9 +1038,6 @@ export function syncAgySession(config: PluginConfig): void {
   prewarmAgySession(config);
 }
 
-/**
- * 销毁 Agy 守护进程
- */
 export function shutdownAgySession(): void {
   agyPrewarmGeneration += 1;
   if (agyPrewarmRetryTimer !== null) {
@@ -1129,10 +1053,6 @@ export function shutdownAgySession(): void {
   activeAgyWorkers.clear();
 }
 
-/**
- * 通过常驻 Agy 会话发送一轮请求。普通翻译使用同一个 low worker，划词问答
- * 使用独立的 high worker，避免切换思考强度时污染翻译会话。
- */
 async function streamAgyPrompt(
   prompt: string,
   config: PluginConfig,
@@ -1162,13 +1082,6 @@ type TranslationAttempt = (
 
 const MAX_TRANSLATION_FIDELITY_ATTEMPTS = 2;
 
-/**
- * 先缓冲翻译结果，再做原文一致性校验。
- *
- * 公式锁、关系运算符和数字校验失败时，错误结果不会进入 UI 或缓存；
- * 只允许模型在同一端点上自动重试一次，第二次仍失败就明确报错，避免
- * “看起来翻译成功、实际改变公式含义”的静默错误。
- */
 async function streamValidatedTranslation(
   source: string,
   callbacks: StreamCallbacks,
@@ -1229,9 +1142,6 @@ async function streamValidatedTranslation(
   throw error;
 }
 
-/**
- * 直接调用本机安装的 Google Antigravity CLI (agy) 进行极速学术翻译。
- */
 export async function streamTranslateAgy(
   text: string,
   config: PluginConfig,
@@ -1255,9 +1165,6 @@ export async function streamTranslateAgy(
   });
 }
 
-/**
- * 发起非 Agy 的流式聊天请求。翻译与提问共享 SSE 解析、错误和取消逻辑。
- */
 async function streamChatPrompt(
   userPrompt: string,
   systemPrompt: string,
@@ -1296,15 +1203,11 @@ async function streamChatPrompt(
       temperature: 0.2,
     };
     if (config.endpointType === 'deepseek') {
-      // 翻译优先首字延迟；划词问答保留此前约定的 high 思考强度。
       bodyData.thinking = thinkingMode === 'high'
         ? { type: 'enabled', reasoning_effort: 'high' }
         : { type: 'disabled' };
     }
   } else {
-    // Google Gemini 原生 SSE 端点
-    // Gemini API 要求通过 x-goog-api-key 请求头鉴权；不要把密钥放进
-    // URL 查询参数，避免它被代理、调试日志或错误记录保存。
     url = `${url}/v1beta/models/${encodeURIComponent(normalizeModelForEndpoint(config.endpointType, config.model))}:streamGenerateContent?alt=sse`;
     if (apiKey) {
       headers['x-goog-api-key'] = apiKey;
@@ -1334,7 +1237,6 @@ async function streamChatPrompt(
     });
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      // 用户切换划词或取消提问，主动中断请求属于预期行为。
       return '';
     }
     const friendlyMsg = `无法连接到翻译服务 (${config.apiBaseUrl})。请检查 API 地址、API Key、网络连接和模型名称是否正确。详细信息: ${err.message}`;
@@ -1371,7 +1273,6 @@ async function streamChatPrompt(
 
       lineBuffer += decoder.decode(value, { stream: true });
       const lines = lineBuffer.split('\n');
-      // 最后一个可能未完整闭合，保留在 buffer
       lineBuffer = lines.pop() || '';
 
       for (const line of lines) {
@@ -1383,7 +1284,6 @@ async function streamChatPrompt(
       }
     }
 
-    // 处理剩余末尾行
     if (lineBuffer.trim()) {
       const delta = extractDeltaFromSSE(lineBuffer, endpointType);
       if (delta) {
@@ -1403,9 +1303,6 @@ async function streamChatPrompt(
   }
 }
 
-/**
- * 发起流式翻译请求。
- */
 export async function streamTranslate(
   text: string,
   config: PluginConfig,
@@ -1427,9 +1324,6 @@ export async function streamTranslate(
   });
 }
 
-/**
- * 基于选中文本回答问题。翻译和提问共用端点配置，但使用独立的学术问答约束。
- */
 export async function streamAsk(
   selectedText: string,
   question: string,

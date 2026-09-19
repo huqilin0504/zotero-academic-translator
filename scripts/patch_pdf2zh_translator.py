@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
-# Downstream pdf2zh patch helper.
 """Keep pdf2zh's local Agy prompt coherent and safe for PDF reflow."""
 
 from __future__ import annotations
@@ -150,7 +149,6 @@ def patch(path: Path) -> bool:
     if worker_class < 0 or translator_class < 0 or translator_class <= worker_class:
         raise RuntimeError("translator.py Agy classes missing")
 
-    # Repair an earlier run that inserted either method into BaseTranslator.
     prefix = source[:worker_class]
     cleaned_prefix = prefix.replace(AGY_WORKER_REPAIR, "").replace(AGY_TRANSLATOR_REPAIR, "")
     if cleaned_prefix != prefix:

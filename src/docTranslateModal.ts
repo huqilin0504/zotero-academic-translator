@@ -2,10 +2,6 @@ import { PluginConfig } from './types';
 import { documentTranslationManager } from './docTranslateTasks';
 import { ensureDocumentTaskStatusBar } from './docTranslateStatus';
 
-/**
- * 打开全文翻译配置面板。
- * 点击开始后只提交后台任务并立即关闭面板，进度和取消操作统一放到状态栏。
- */
 export function openDocTranslateModal(
   doc: Document,
   item: any,
@@ -145,7 +141,6 @@ export function openDocTranslateModal(
       config,
       title: itemTitle,
     });
-    // 任务已交给管理器，关闭弹窗不会中断子进程。
     closeModal();
   });
 }

@@ -12,10 +12,8 @@ export interface AssistantPaperInfo {
   url?: string;
   tags?: string[];
   fileName?: string;
-  /** 当前论文附件的本地路径，仅在插件进程内用于构造 Agy 只读目录白名单。 */
   filePath?: string;
   abstractNote?: string;
-  /** 当前 PDF 的本地全文。只作为数据上下文传给模型，不作为提示词执行。 */
   fullText?: string;
 }
 
@@ -69,14 +67,9 @@ const MAX_CONVERSATION_HISTORY_TURNS = 6;
 const MAX_CONVERSATION_FIELD_LENGTH = 1200;
 const ASSISTANT_CONVERSATIONS_STORAGE_KEY = 'extensions.gemini-translator.assistant-conversations';
 const MAX_PERSISTED_ASSISTANT_PAPERS = 12;
-/** 本地保留最近 30 轮问答；发送给 API 的上下文仍单独限流，避免请求过大。 */
 export const ASSISTANT_PERSISTED_TURN_LIMIT = 30;
 const MAX_PERSISTED_ASSISTANT_TURNS = ASSISTANT_PERSISTED_TURN_LIMIT;
 const MAX_PERSISTED_ASSISTANT_FIELD_LENGTH = 12000;
-/**
- * 全文上下文的单次上限。常见 10～20 页论文会完整放入请求；超长论文保留
- * 开头和结尾，并明确告诉模型中间内容被截断，避免把摘要误当成全文。
- */
 export const ASSISTANT_FULL_TEXT_MAX_LENGTH = 80000;
 const ASSISTANT_SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -239,7 +232,6 @@ function saveAssistantSidebarWidth(doc: Document, width: number): void {
   try {
     doc.defaultView?.localStorage?.setItem(ASSISTANT_SIDEBAR_STORAGE_KEY, String(width));
   } catch (_) {
-    // Zotero 的 chrome 文档可能禁用 localStorage；此时保留当前窗口内的宽度即可。
   }
 }
 
@@ -273,7 +265,6 @@ function saveAssistantConversationHeight(doc: Document, height: number): void {
   try {
     doc.defaultView?.localStorage?.setItem(ASSISTANT_CONVERSATION_HEIGHT_STORAGE_KEY, String(height));
   } catch (_) {
-    // Zotero 的 chrome 文档可能禁用 localStorage；此时保留当前窗口内的高度即可。
   }
 }
 
@@ -381,12 +372,6 @@ export function shouldSubmitAssistantInput(event: {
   return event.key === 'Enter' && Boolean(event.ctrlKey || event.metaKey) && !event.shiftKey;
 }
 
-/**
- * Build a bounded, data-only context for the academic assistant. The paper
- * metadata and full text are always present when Zotero can read the local
- * attachment; the latest selection is only a focus hint and is never treated
- * as an instruction by the client prompt builder.
- */
 export function buildAssistantContext(
   info: AssistantPaperInfo,
   selectedText = '',
@@ -401,7 +386,6 @@ export function buildAssistantContext(
     doi: String(info.doi || '').slice(0, 500),
     url: String(info.url || '').slice(0, 2000),
     fileName: String(info.fileName || '').slice(0, 1000),
-    // 全文已作为主要证据传入；存在全文时压缩元数据，避免它挤掉正文。
     abstractNote: String(info.abstractNote || '').slice(0, hasFullText ? 6000 : 10000),
     tags: (info.tags || []).map((tag) => String(tag).slice(0, 200)).slice(0, hasFullText ? 30 : 100),
   };
@@ -661,8 +645,6 @@ export function createAssistantSidebar(
   const sendButton = doc.createElement('button');
   sendButton.type = 'submit';
   sendButton.className = 'gemini-assistant-send';
-  // 在当前论文的元数据与全文上下文读取完成前，不允许提前发出一个只带
-  // 选区的请求；这样“基于全文”是实际保证，而不是仅靠提示词约定。
   sendButton.disabled = true;
   sendButton.appendChild(createAssistantSvgIcon(
     doc,
@@ -906,7 +888,6 @@ export function createAssistantSidebar(
   };
 
   const scrollConversationToBottom = (): void => {
-    // 论文信息和当前选区固定；只有对话列表拥有独立滚动条。
     resultContent.scrollTop = resultContent.scrollHeight;
     updateScrollLatestVisibility();
   };
@@ -1143,8 +1124,6 @@ export function createAssistantSidebar(
       sendButton.disabled = false;
       renderPaper();
       if (initializingPaper) {
-        // 元数据通常异步到达；若用户在此之前已经发起问题，不要清掉正在
-        // 生成的那一轮，只在没有活动回答时恢复该论文的历史。
         if (!activeTurn && conversationHistory.length === 0) {
           conversationHistory = loadPersistedAssistantTurns(doc, nextIdentity);
           renderConversationHistory();
@@ -1156,7 +1135,6 @@ export function createAssistantSidebar(
       }
       if (!paperChanged) return;
 
-      // 阅读器复用同一个文档窗口切换 PDF 时，旧论文的选区、回答和图片不能继续留在侧栏。
       selectedText = '';
       selectionText.textContent = '';
       selectionSection.hidden = true;
@@ -1260,8 +1238,6 @@ export function createAssistantSidebar(
     },
   };
 
-  // Keep a compact copy affordance in the answer header without making the
-  // composer look like a separate chat application.
   const copy = doc.createElement('button');
   copy.type = 'button';
   copy.className = 'gemini-assistant-copy';

@@ -81,19 +81,11 @@ function taskFingerprint(request: DocumentTranslationTaskRequest): string {
     mode: request.mode,
     endpointType: request.config.endpointType,
     apiBaseUrl: request.config.apiBaseUrl,
-    // 旧版 chat/reasoner 与当前 deepseek-flash 是同一条迁移路径；
-    // 统一后，重启或升级不会因为模型别名不同而错过同一输出任务的去重。
     model: normalizeModelForEndpoint(request.config.endpointType, request.config.model),
     targetLanguage: request.config.targetLanguage,
   });
 }
 
-/**
- * 全文翻译后台任务管理器。
- *
- * 它只持有进程和 Zotero 附件对象，不把 PDF 内容复制进内存；关闭配置弹窗
- * 不会触发 AbortController，只有用户在状态栏点击取消或插件卸载时才会中止。
- */
 export class DocumentTranslationManager {
   private readonly entries = new Map<string, TaskEntry>();
   private readonly listeners = new Set<TaskListener>();
@@ -174,9 +166,6 @@ export class DocumentTranslationManager {
     this.entries.set(id, entry);
     this.pruneFinished();
     this.emit();
-    // 让调用方先拿到 queued 状态，再在下一个微任务进入“按最终输出路径”
-    // 的队列。同一 PDF 的不同页段会共享同一输出路径，因此绝不会同时
-    // 启动两个 pdf2zh 去覆盖同一个文件。
     this.enqueue(entry);
     return cloneSnapshot(entry.snapshot);
   }
@@ -228,8 +217,6 @@ export class DocumentTranslationManager {
   }
 
   private async run(entry: TaskEntry): Promise<void> {
-    // 用户可能在 queued 微任务启动前就点击了取消；不要让任务被取消后又
-    // 短暂切回 running，更不能在取消后启动 pdf2zh 子进程。
     if (entry.cancelRequested || entry.controller.signal?.aborted || entry.snapshot.status === 'cancelled') {
       return;
     }
@@ -278,9 +265,6 @@ export class DocumentTranslationManager {
       }
       entry.attachment = attachment;
 
-      // 取消可能发生在附件导入期间。附件导入已经是不可安全回滚的外部
-      // Zotero 操作，因此保留已导入附件，但任务只能进入 cancelled，不能
-      // 被错误地标记为 completed；用户仍可从条目中看到这个译本。
       if (entry.cancelRequested || entry.controller.signal?.aborted) {
         this.update(entry, {
           status: 'cancelled',
@@ -309,7 +293,6 @@ export class DocumentTranslationManager {
         finishedAt: Date.now(),
       });
 
-      // 后台运行不强制抢占阅读器；保留已有设置，让用户可选择自动打开。
       if (entry.request.config.docAutoOpen) {
         await this.dependencies.open(attachment);
       }
@@ -380,9 +363,6 @@ export class DocumentTranslationManager {
 
   private updateProgress(entry: TaskEntry, progress: DocTranslateProgress): void {
     if (entry.snapshot.status === 'cancelled') return;
-    // pdf2zh 在子进程退出、附件尚未导入时也会发出 done；后台任务的
-    // terminal 状态必须由 translate + attach 全部成功后统一设置，避免
-    // “第 9/17 页”或“正在整理排版”时提前显示 100%。
     if (progress.stage === 'done') return;
     const percent = Math.max(entry.snapshot.progress.percent, clampPercent(progress.percent));
     this.update(entry, {

@@ -34,8 +34,6 @@ test('docTranslateTasks: 提交后立即返回并在后台更新进度', async (
   const updates: string[] = [];
   const manager = new DocumentTranslationManager({
     translate: async (options) => {
-      // 模拟 pdf2zh 在进程收尾时提前发出的 done 信号；任务管理器不能
-      // 在附件导入完成前把它显示为 100%。
       options.onProgress?.({ stage: 'done', percent: 100, message: '全文翻译完成！' });
       options.onProgress?.({ stage: 'translating', percent: 42, message: '正在翻译第 4 / 10 页' });
       return new Promise((resolve) => {
@@ -58,7 +56,6 @@ test('docTranslateTasks: 提交后立即返回并在后台更新进度', async (
   assert.equal(running?.status, 'running');
   assert.equal(running?.progress.percent, 42);
 
-  // 相同输入不会重复启动第二个 pdf2zh 子进程。
   const duplicate = manager.start(request());
   assert.equal(duplicate.id, started.id);
 

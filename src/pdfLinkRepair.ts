@@ -1,9 +1,3 @@
-/**
- * pdf2zh uses PyMuPDF internally, but its generated translated pages do not
- * consistently carry over PDF link annotations.  Keep the repairer as a
- * small, self-contained Python program so it can run in the same uv tool
- * environment as pdf2zh without adding a JS PDF dependency to the XPI.
- */
 export const PDF_LINK_REPAIR_SCRIPT = String.raw`
 import json
 import os
@@ -44,9 +38,6 @@ def _destination_point(source_link, source_page):
     point = source_link.get("to")
     if point is not None:
         return point
-    # PyMuPDF exposes named FitR/XYZ destinations as a PDF destination string
-    # instead of a Point. PDF coordinates use a bottom-left origin, while
-    # insert_link expects the top-left page coordinate system.
     destination = source_link.get("dest")
     if not isinstance(destination, str):
         return None
@@ -70,7 +61,6 @@ def _clip_rect(rect, page_rect):
 
 
 def _source_page_targets(kind, link, source_count):
-    # A GOTOR link's page belongs to a remote file and must not be remapped.
     if kind not in (fitz.LINK_GOTO, fitz.LINK_NAMED):
         return None
     page = link.get("page")
@@ -88,9 +78,6 @@ def _build_link(source_link, source_page, target_page, source_count, page_map):
     if rect is None:
         return None
 
-    # Named PDF destinations are not stable after pdf2zh interleaves pages.
-    # Convert those with a concrete page to a direct GOTO link, which works in
-    # Zotero's reader and keeps the destination on the matching translated page.
     mapped_source_page = _source_page_targets(kind, source_link, source_count)
     if mapped_source_page is not None:
         mapped_target_page = page_map.get(mapped_source_page)
@@ -213,9 +200,6 @@ def repair(source_path, target_path, mode):
         page = source[source_index]
         source_links.append(list(page.get_links()))
 
-    # pdf2zh's dual output is [original 1, translated 1, original 2, ...].
-    # Rebuild links on both halves so either side of the bilingual PDF remains
-    # navigable. Mono output has only one translated page per source page.
     translated_targets = _page_map(source_count, target_count, mode, True)
     original_targets = _page_map(source_count, target_count, mode, False)
     page_expectations = {}
@@ -296,7 +280,6 @@ export function buildPdfLinkRepairArgs(
   return ['-c', PDF_LINK_REPAIR_SCRIPT, sourcePdfPath, targetPdfPath, mode];
 }
 
-/** Return candidates without assuming the maintainer's home directory layout. */
 export function resolvePdfPythonCandidates(pdf2zhBin: string): string[] {
   const normalized = pdf2zhBin || '';
   const separator = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));

@@ -18,8 +18,6 @@ function syncStyles() {
     fs.writeFileSync(tsPath, tsCode, 'utf-8');
   }
 
-  // KaTeX relies on its TeX fonts for fraction, radical and delimiter metrics.
-  // Keep them inside the XPI so the injected style sheet does not depend on a CDN.
   const fontsSource = path.resolve('node_modules/katex/dist/fonts');
   const fontsTarget = path.resolve('fonts');
   if (fs.existsSync(fontsSource)) {

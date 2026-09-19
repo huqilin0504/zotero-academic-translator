@@ -104,10 +104,6 @@ function createTaskRow(
   return row;
 }
 
-/**
- * 在 Zotero 阅读器/主窗口中挂载一个轻量的全文任务下拉栏。
- * 同一 Document 只挂载一次，任务进度由全局管理器推送。
- */
 export function ensureDocumentTaskStatusBar(
   doc: Document,
   manager: DocumentTranslationManager = documentTranslationManager
@@ -116,8 +112,6 @@ export function ensureDocumentTaskStatusBar(
   const existing = mountedBars.get(statusDocument);
   if (existing) return existing;
 
-  // statusDocument 可能是 Zotero 主窗口，而调用方 doc 是阅读器 iframe；
-  // 所有节点必须由同一个 Document 创建，才能安全挂载到主窗口 body。
   const root = statusDocument.createElement('div');
   root.id = STATUS_BAR_ID;
   root.className = 'gemini-task-status';

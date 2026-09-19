@@ -61,7 +61,6 @@ function appendStreamingText(doc: Document, container: HTMLElement, text: string
     container.appendChild(cursor);
   }
 
-  // 复用同一个文本节点，避免每个增量片段都清空并重建整棵结果 DOM。
   textNode.textContent = text;
   if (!cursor) {
     cursor = doc.createElement('span');
@@ -143,10 +142,6 @@ function appendError(
   container.appendChild(errorBox);
 }
 
-/**
- * 在传入的 Document 下创建划词翻译卡片 DOM 节点及状态控制器。
- * 视觉上保持为贴近 Zotero 阅读器的轻量工具条；引擎设置统一在插件偏好页维护。
- */
 export function createTranslationCard(
   doc: Document,
   options: TranslationCardOptions = {}
@@ -172,7 +167,6 @@ export function createTranslationCard(
     return button;
   };
 
-  // 1. 顶部状态栏：标题、低存在感状态和三个常用操作
   const header = doc.createElement('div');
   header.className = 'gemini-card-header';
 
@@ -240,12 +234,10 @@ export function createTranslationCard(
     }
   });
 
-  // 2. 翻译结果区域
   const contentBox = doc.createElement('div');
   contentBox.className = 'gemini-content-box';
   const translationStream = createStreamingUpdater(doc, contentBox);
 
-  // 3. 提问输入区：默认收起，避免干扰普通划词翻译
   const questionComposer = doc.createElement('form');
   questionComposer.className = 'gemini-question-composer';
   questionComposer.hidden = false;
@@ -404,7 +396,6 @@ export function createTranslationCard(
     files.forEach(addQuestionImage);
   });
 
-  // 4. 问答结果区域：保留译文，同时显示当前问题及回答
   const questionResult = doc.createElement('div');
   questionResult.className = 'gemini-result-pane gemini-question-result';
   questionResult.hidden = true;
@@ -425,7 +416,6 @@ export function createTranslationCard(
   questionResult.appendChild(questionResultHeader);
   questionResult.appendChild(questionContent);
 
-  // 问答独立为翻译卡片右侧的侧边栏，不再占用译文卡片内部空间。
   const questionPanel = doc.createElement('aside');
   questionPanel.className = 'gemini-question-panel';
   questionPanel.hidden = true;
@@ -442,7 +432,6 @@ export function createTranslationCard(
   questionPanel.appendChild(questionComposer);
   questionPanel.appendChild(questionResult);
 
-  // 翻译卡片只保留译文，回答始终挂在右侧独立面板。
   const translationPane = doc.createElement('div');
   translationPane.className = 'gemini-result-pane gemini-translation-pane';
   const translationPaneHeader = doc.createElement('div');
@@ -468,7 +457,6 @@ export function createTranslationCard(
       return;
     }
 
-    // 先显示再测量，才能同时约束侧栏的实际宽高和视口边缘。
     repositionQuestionPanel();
     view?.addEventListener?.('resize', repositionQuestionPanel);
     if (focusInput) {
@@ -488,7 +476,6 @@ export function createTranslationCard(
     const viewportHeight = Math.max(1, view?.innerHeight || 768);
     const panelWidth = Math.min(340, Math.max(1, viewportWidth - margin * 2));
 
-    // 先清除上一次的内联位置，再用实际测量值决定右侧、左侧或下方。
     questionPanel.classList.remove('is-left', 'is-below');
     questionPanel.style.left = '';
     questionPanel.style.right = '';
@@ -506,7 +493,6 @@ export function createTranslationCard(
       questionPanel.classList.add('is-below');
     }
 
-    // 以视口坐标计算，再换算为 shell 内的 absolute 偏移，避免底部被裁掉。
     const panelHeight = Math.min(
       questionPanel.scrollHeight || questionPanel.getBoundingClientRect?.().height || 0,
       Math.max(1, viewportHeight - margin * 2)

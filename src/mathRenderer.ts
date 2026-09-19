@@ -1,9 +1,5 @@
 import katex from 'katex';
 
-/**
- * 可识别的数学片段。扫描器只负责定位公式，最终 HTML 仍由 KaTeX 生成。
- * 这样划词翻译、提问回答和 Markdown 混排会共享完全相同的分隔符规则。
- */
 export interface MathMatch {
   start: number;
   end: number;
@@ -38,16 +34,7 @@ const MATH_ENVIRONMENTS = new Set([
   'array',
 ]);
 
-/**
- * 将包含 LaTeX 语法的纯文本转换为安全 HTML。
- *
- * 支持 Markdown 常见的美元分隔符，也支持 LaTeX 原生的 \(...\)、\[...\]
- * 和常见数学环境。普通模型文本会先转义，只有 KaTeX 生成的标记进入 innerHTML。
- */
 export function renderMathToHtml(text: string): string {
-  // 划词翻译的 PDF 文本层有时会把公式分隔符和上/下标排版信息丢掉，
-  // 例如模型返回“L ∈ RB×N×S”而不是带 $...$ 的 LaTeX。先恢复这类
-  // 明确的张量维度表达式，再交给同一套 KaTeX 扫描器，避免它退化成普通正文。
   const normalizedText = normalizeBareMathNotation(normalizeModelMathEscaping(text));
   if (!normalizedText || !containsMathSyntax(normalizedText)) {
     return escapePlainText(normalizedText);
@@ -70,15 +57,10 @@ export function renderMathToHtml(text: string): string {
   return html;
 }
 
-/**
- * 查找从 start 开始的下一个公式。Markdown 渲染器也使用这个扫描器，
- * 以免出现“纯翻译能渲染、Markdown 回答不能渲染”的分叉行为。
- */
 export function findNextMath(text: string, start = 0): MathMatch | null {
   for (let index = Math.max(0, start); index < text.length; index += 1) {
     if (isEscaped(text, index)) continue;
 
-    // 块级美元公式：$$...$$
     if (text.startsWith('$$', index)) {
       const close = findClosingToken(text, index + 2, '$$', true);
       if (close !== -1) {
@@ -93,7 +75,6 @@ export function findNextMath(text: string, start = 0): MathMatch | null {
       }
     }
 
-    // LaTeX 原生块级公式：\[...\]
     if (text.startsWith('\\[', index)) {
       const close = findClosingToken(text, index + 2, '\\]', true);
       if (close !== -1) {
@@ -108,11 +89,9 @@ export function findNextMath(text: string, start = 0): MathMatch | null {
       }
     }
 
-    // 常见的数学环境可以直接交给 KaTeX，例如 aligned、equation、matrix。
     const environment = matchMathEnvironment(text, index);
     if (environment) return environment;
 
-    // LaTeX 原生行内公式：\(...\)
     if (text.startsWith('\\(', index)) {
       const close = findClosingToken(text, index + 2, '\\)', false);
       if (close !== -1) {
@@ -127,7 +106,6 @@ export function findNextMath(text: string, start = 0): MathMatch | null {
       }
     }
 
-    // 行内美元公式：允许公式内部有空格，但不把单独的货币金额当成公式。
     if (text[index] === '$' && text[index + 1] !== '$') {
       const close = findClosingToken(text, index + 1, '$', false);
       if (close !== -1) {
@@ -149,7 +127,6 @@ export function findNextMath(text: string, start = 0): MathMatch | null {
   return null;
 }
 
-/** 直接在给定 DOM 容器中完成 KaTeX 排版与富文本挂载。 */
 export function renderMathInContainer(container: HTMLElement, text: string): void {
   container.innerHTML = renderMathToHtml(text);
 }
@@ -181,12 +158,6 @@ function renderFormula(
   }
 }
 
-/**
- * 一些 OpenAI 兼容 API 会把模型原本输出的 LaTeX 反斜杠再次转义，导致
- * `\\(`、`\\[` 或 `\\frac` 到达渲染器时变成两个反斜杠。JSON.parse
- * 只会去掉传输层转义，不能修复这种模型文本本身的重复转义；这里仅处理
- * 数学分隔符，避免普通正文中的反斜杠被意外改写。
- */
 export function normalizeModelMathEscaping(text: string): string {
   if (!text) return text;
 
@@ -311,8 +282,6 @@ export function normalizeModelMathEscaping(text: string): string {
       }
     }
 
-    // 公式内部的双反斜杠通常是 API 对 LaTeX 命令的重复转义。
-    // 三反斜杠序列和后接方括号的行距写法必须保留，避免破坏矩阵换行。
     if (
       text.startsWith('\\\\', cursor) &&
       text[cursor - 1] !== '\\' &&
@@ -330,15 +299,6 @@ export function normalizeModelMathEscaping(text: string): string {
   return result;
 }
 
-/**
- * 恢复 API/PDF 文本中丢失分隔符的常见张量维度公式。
- *
- * 处理四类 PDF/API 常见退化形态：带集合关系且包含至少两个维度的张量，
- * 被空格摊平的上下标（如“P c”），保留 ^/_ 但缺少分隔符的变量（如
- * “f_i^j”），以及在中文解释语境中没有分隔符的单字母变量（如“其中n代表”）。
- * 普通单词和已经被 $...$、\(...\) 或 \[...\] 包住的公式不会进入该规则，
- * 避免把正文误判成数学表达式。
- */
 export function normalizeBareMathNotation(text: string): string {
   if (
     !text ||
@@ -358,9 +318,6 @@ export function normalizeBareMathNotation(text: string): string {
       String.raw`(${atom}(?:[ \t]*(?:×|x|·|\*)[ \t]*${atom}){1,4})`,
     'gu'
   );
-  // PDF 文本层还可能把上下标完全摊平成空格，例如“P c 表示…”、
-  // “M i 表示…”或“P 1−N 的值”。只在单字母变量后面、且紧跟学术
-  // 语境词时恢复，避免把普通中文中的英文字母误判为公式。
   const flattenedScriptPattern = new RegExp(
     String.raw`(^|[^\\\p{L}\p{N}_$])` +
       String.raw`([A-Za-z])\s+([A-Za-z0-9](?:\s*[−–-]\s*[A-Za-z0-9])?)` +
@@ -368,8 +325,6 @@ export function normalizeBareMathNotation(text: string): string {
       String.raw`represents|denotes|stands for|is|value|of)(?![A-Za-z]))`,
     'gu'
   );
-  // 有些 API 会保留 ^/_，但仍省略 $...$ 分隔符。只在公式解释词或
-  // 标点紧随其后时恢复，避免把普通标识符（例如 file_name）误转为公式。
   const markedScriptPattern = new RegExp(
     String.raw`(^|(?<![A-Za-z0-9_$\\]))` +
       String.raw`([A-Za-z])` +
@@ -378,8 +333,6 @@ export function normalizeBareMathNotation(text: string): string {
       String.raw`represents|denotes|stands for|is|value|of|[,.;:，。；：！？!?）\])|$)(?![A-Za-z]))`,
     'gu'
   );
-  // 翻译结果还可能直接输出“其中n代表…”或“V_i 是…”。裸单字母只在
-  // 解释/定义语境中恢复，普通英文单词和文件名不会进入该规则。
   const bareVariablePattern = new RegExp(
     String.raw`(^|(?<![A-Za-z0-9_$\\]))` +
       String.raw`([A-Za-z])` +
@@ -415,7 +368,6 @@ export function normalizeBareMathNotation(text: string): string {
       kind = 'variable';
     }
 
-    // 已有的数学分隔符优先；裸公式匹配只在普通文本区间内生效。
     if (explicit && (!bare || explicit.start <= bare.index)) {
       result += text.slice(cursor, explicit.end);
       cursor = explicit.end;
@@ -502,7 +454,6 @@ function matchMathEnvironment(text: string, index: number): MathMatch | null {
   return {
     start: index,
     end: close + closing.length,
-    // 环境本身（而不是只保留内部文本）交给 KaTeX，才能正确处理 aligned/matrix 的列结构。
     content: text.slice(index, close + closing.length),
     displayMode: true,
     opening,
@@ -518,12 +469,9 @@ function isLikelyInlineDollarMath(content: string): boolean {
   const trimmed = content.trim();
   if (!trimmed || /[\r\n]/.test(content)) return false;
 
-  // 运算符、控制序列和结构符号是最可靠的公式信号。
   if (/[\\^_={}()[\]|<>+=*/]/.test(trimmed)) return true;
-  // 单个变量或纯数值仍是合法的短公式。
   if (/^[A-Za-z](?:[A-Za-z0-9]*)$/.test(trimmed)) return true;
   if (/^\d+(?:\.\d+)?$/.test(trimmed)) return true;
-  // 没有空格的短 token（例如数学标签）保持兼容。
   return !/\s/.test(content) && trimmed.length <= 80;
 }
 

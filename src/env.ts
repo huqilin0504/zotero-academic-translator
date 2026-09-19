@@ -1,6 +1,3 @@
-/**
- * Zotero 7 / Gecko 运行环境适配与 Web API 获取
- */
 
 import { ImageAttachment } from './types';
 
@@ -8,10 +5,6 @@ export const MAX_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const IMAGE_TEMP_DIR = '/tmp/zotero-gemini-translator-images';
 
 export function getFetch(doc?: Document): typeof fetch {
-  // Reader PDF documents live in a content/iframe principal. Its fetch is
-  // subject to the provider's CORS policy and DeepSeek/Gemini commonly return
-  // a bare NetworkError before the response reaches the plugin. Use Zotero's
-  // privileged main window first for cross-origin provider requests.
   if (typeof Zotero !== 'undefined') {
     const win = Zotero.getMainWindow?.();
     if (win?.fetch) {
@@ -31,8 +24,6 @@ export function getFetch(doc?: Document): typeof fetch {
 }
 
 export function getAbortController(doc?: Document): typeof AbortController {
-  // fetch 由 Zotero 主窗口执行时，AbortSignal 也应来自同一个 Gecko realm，
-  // 避免跨 iframe 传递信号时再次触发类型转换错误。
   if (typeof Zotero !== 'undefined') {
     const win = Zotero.getMainWindow?.();
     if (win?.AbortController) {
@@ -57,8 +48,6 @@ export function getAbortController(doc?: Document): typeof AbortController {
 }
 
 export function getTextDecoder(doc?: Document): typeof TextDecoder {
-  // streamChatPrompt 的响应来自 Zotero 主窗口 fetch。TextDecoder 必须来自
-  // 同一个 realm，否则 Gecko 可能拒绝另一个窗口生成的 Uint8Array。
   if (typeof Zotero !== 'undefined') {
     const win = Zotero.getMainWindow?.();
     if (win?.TextDecoder) {
@@ -86,14 +75,6 @@ export function clearChildren(el: HTMLElement): void {
   }
 }
 
-/**
- * 在 Zotero 的 PDF 阅读器上下文中复制文本。
- *
- * 阅读器 iframe 里 navigator.clipboard 可能存在，但由于权限/安全上下文
- * 被拒绝；因此不能把“API 存在”当成“复制成功”。依次尝试 Zotero 官方内部
- * 剪贴板、Gecko 原生剪贴板、浏览器 Clipboard API 和 DOM 兼容回退，只有
- * 真正成功才返回。
- */
 export async function copyTextToClipboard(doc: Document, text: string): Promise<void> {
   if (!text) throw new Error('没有可复制的译文');
 
@@ -105,7 +86,6 @@ export async function copyTextToClipboard(doc: Document, text: string): Promise<
     if (message && !errors.includes(message)) errors.push(message);
   };
 
-  // Zotero 自带的特权封装是最稳定的路径，尤其适用于 PDF 阅读器 iframe。
   try {
     const zotero = globals.Zotero;
     const copy = zotero?.Utilities?.Internal?.copyTextToClipboard;
@@ -117,7 +97,6 @@ export async function copyTextToClipboard(doc: Document, text: string): Promise<
     recordFailure(error);
   }
 
-  // Zotero 7/Gecko 的特权剪贴板接口，不受 PDF iframe 的 Clipboard API 权限影响。
   const tryNativeClipboard = (services: any): boolean => {
     try {
       if (typeof services?.clipboard?.copyString === 'function') {
@@ -154,7 +133,6 @@ export async function copyTextToClipboard(doc: Document, text: string): Promise<
     recordFailure(error);
   }
 
-  // 普通浏览器/测试环境的 Clipboard API。
   try {
     const viewNavigator = (doc.defaultView as any)?.navigator;
     const clipboard = viewNavigator?.clipboard || globals.navigator?.clipboard;
@@ -163,11 +141,9 @@ export async function copyTextToClipboard(doc: Document, text: string): Promise<
       return;
     }
   } catch (error) {
-    // API 被拒绝时继续走 DOM 回退，不能在这里提前结束。
     recordFailure(error);
   }
 
-  // 最后的兼容路径：execCommand 可能在旧版 Zotero 文档中仍可用。
   const parent = doc.body || doc.documentElement;
   if (parent && typeof doc.createElement === 'function' && typeof doc.execCommand === 'function') {
     const textarea = doc.createElement('textarea') as HTMLTextAreaElement;
@@ -240,12 +216,6 @@ function joinExecutablePath(directory: string, executable: string): string {
   return `${normalizedDirectory}${separator}${normalizedExecutable}`;
 }
 
-/**
- * Subprocess.sys.mjs 在部分 Zotero/Gecko 版本中不会像 Node spawn 一样
- * 自动搜索 PATH，而桌面启动 Zotero 也可能没有继承 shell 的 PATH。
- * 为命令名补充当前环境 PATH、用户 bin 目录和常见 Unix 目录候选，调用方
- * 可以按顺序尝试，避免把维护者机器的绝对路径写入默认配置。
- */
 export function getExecutableCandidates(command: string): string[] {
   const raw = String(command || '').trim();
   if (!raw) return [];
@@ -284,10 +254,6 @@ export interface ExecutableCheckResult {
   detail: string;
 }
 
-/**
- * 设置页环境检查：执行命令自身的版本探针，而不是假设维护者的 home 路径。
- * 正常翻译路径仍直接启动目标进程，避免每次请求额外产生探针进程。
- */
 export async function checkExecutable(command: string): Promise<ExecutableCheckResult> {
   const target = String(command || '').trim();
   if (!target) return { command: target, available: false, detail: '未填写可执行文件名或路径' };
@@ -408,12 +374,6 @@ async function writeTempBytes(filePath: string, bytes: Uint8Array): Promise<void
   throw new Error('当前 Zotero 环境没有可用的本地文件写入接口');
 }
 
-/**
- * 把浏览器 File/Blob 保存为本机临时图片。
- * Agy 使用 path 让本机 agent 的文件查看工具读取原图；其它多模态端点
- * 同时使用 dataUrl 发送 inline image。调用方应在请求结束后调用
- * removeTempImageAttachment 清理临时文件。
- */
 export async function persistImageFile(
   file: Blob & { name?: string },
   includeDataUrl = true
@@ -466,6 +426,5 @@ export async function removeTempImageAttachment(attachment: ImageAttachment): Pr
       await fs.rm(filePath, { force: true });
     }
   } catch (_) {
-    // 临时文件清理失败不应覆盖模型回答；路径带有固定目录前缀，后续启动时可安全清理。
   }
 }

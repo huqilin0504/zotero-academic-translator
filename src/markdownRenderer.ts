@@ -15,7 +15,6 @@ interface TokenStore {
 
 function createTokenStore(): TokenStore {
   const values: string[] = [];
-  // 每次渲染使用不同的占位符，避免模型文本伪造占位符触发 HTML 恢复。
   const marker = `${TOKEN_START}gemini-${Math.random().toString(36).slice(2)}${TOKEN_END}`;
   const escapedMarker = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(`${escapedMarker}(\\d+)${escapedMarker}`, 'g');
@@ -30,10 +29,6 @@ function createTokenStore(): TokenStore {
   };
 }
 
-/**
- * 将模型返回的常见 Markdown 子集转换为安全 HTML。
- * 所有模型文本先转义，只有 KaTeX 和本函数生成的标签会进入 innerHTML。
- */
 export function renderMarkdownToHtml(text: string, enableKaTeX = true): string {
   if (!text) return '';
 
@@ -128,8 +123,6 @@ export function renderMarkdownToHtml(text: string, enableKaTeX = true): string {
         if (item && item.ordered === ordered) {
           if (ordered && items.length > 0) {
             const itemNumber = item.number || nextNumber;
-            // 模型有时会在空行后把同一组编号重新写成 1；只要没有跳号，
-            // 仍按同一个列表合并，避免浏览器把下一段重新显示为“1.”。
             if (itemNumber !== nextNumber && itemNumber !== 1) break;
           }
           items.push(item.content);
@@ -182,7 +175,6 @@ export function renderMarkdownToHtml(text: string, enableKaTeX = true): string {
   return blocks.join('');
 }
 
-/** 将 Markdown HTML 安全挂载到结果容器。 */
 export function renderMarkdownInContainer(
   container: HTMLElement,
   text: string,
@@ -196,7 +188,6 @@ function renderInline(source: string, enableKaTeX: boolean): string {
   const tokens = createTokenStore();
   let text = source;
 
-  // 代码优先于其他行内语法，代码里的星号、美元符号和尖括号都不能被解释。
   text = text.replace(/(`{1,3})([\s\S]*?)\1/g, (_match, _ticks: string, content: string) => {
     return tokens.put(`<code class="gemini-markdown-inline-code">${escapeHtml(content.replace(/\s*\n\s*/g, ' '))}</code>`);
   });
@@ -205,12 +196,10 @@ function renderInline(source: string, enableKaTeX: boolean): string {
     text = extractMath(text, tokens);
   }
 
-  // Markdown 反斜杠转义字符先占位，避免后续粗体/斜体规则重新解释它。
   text = text.replace(/\\([\\`*_{}\[\]()#+.!>|~-])/g, (_match, character: string) => {
     return tokens.put(escapeHtml(character));
   });
 
-  // 链接标签递归走同一套安全渲染；协议白名单拒绝 javascript/data 等危险地址。
   text = text.replace(
     /\[([^\]\n]+)\]\(([^\s)]+)(?:\s+["']([^"']*)["'])?\)/g,
     (_match, label: string, href: string, title: string | undefined) => {

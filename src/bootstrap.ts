@@ -24,11 +24,7 @@ let activeAssistantAbortController: any = null;
 const assistantSidebars = new WeakMap<Document, AssistantSidebarController>();
 const assistantSidebarControllers = new Set<AssistantSidebarController>();
 const assistantPaperRefreshTokens = new WeakMap<Document, number>();
-// Agy 文件工具只拿到当前论文附件目录和本次上传图片目录；不把 Zotero
-// 主目录、用户 Home 或系统临时目录整体加入工作区。
 const assistantToolDirectories = new WeakMap<Document, string[]>();
-// Zotero 的全文索引按附件缓存；同一阅读器窗口反复打开助手时不要重复
-// 触发 PDF 提取。Map 只保留当前插件进程内的结果，不会把论文内容写入云端。
 const readerFullTextCache = new Map<number, string>();
 const readerFullTextInFlight = new Map<number, Promise<string>>();
 type AssistantLayoutState = {
@@ -45,9 +41,6 @@ const assistantLayouts = new WeakMap<Document, AssistantLayoutState>();
 const menuItemElements: any[] = [];
 let translationCache = new LRUCache<string, string>(500);
 let translationCacheCapacity = 500;
-// 同一选区在首个 API 请求尚未完成时可能被多个阅读器窗口同时触发。
-// 共享进行中的 Promise，避免重复消耗一次 API 配额；完成后结果仍会写入
-// 内存与持久化缓存，后续请求直接命中。
 const translationInFlight = new Map<string, Promise<string>>();
 const TRANSLATION_HISTORY_STORAGE_KEY = 'extensions.gemini-translator.translation-history';
 const MAX_PERSISTED_TRANSLATIONS = 80;
@@ -172,7 +165,6 @@ function getTranslationCache(config: ReturnType<typeof loadConfig>): LRUCache<st
 }
 
 function compactPersistentKey(key: string): string {
-  // 问答上下文可能包含摘要和多轮历史；不要把整段上下文重复写进 Zotero.Prefs 的键名。
   let hash = 2166136261;
   for (let index = 0; index < key.length; index += 1) {
     hash ^= key.charCodeAt(index);
@@ -223,10 +215,6 @@ function deleteCachedText(cache: LRUCache<string, string>, key: string, doc?: Do
   writePersistentJson(TRANSLATION_HISTORY_STORAGE_KEY, store, doc);
 }
 
-/**
- * 旧缓存也必须经过同一套公式一致性校验，避免修复插件后继续展示历史错译。
- * 如果校验器补回了公式分隔符，则把修复后的安全文本重新写回缓存。
- */
 function getValidatedTranslationCache(
   cache: LRUCache<string, string>,
   key: string,
@@ -279,8 +267,6 @@ function buildQuestionCacheKey(
       name: image.name,
       mimeType: image.mimeType,
       size: image.size,
-      // HTTP 端点用 dataUrl 的尾部做轻量指纹；Agy 不保留 dataUrl，只能
-      // 使用本次临时路径，宁可少命中缓存，也不能让同名同大小图片串答案。
       dataFingerprint: image.dataUrl
         ? `${image.dataUrl.length}:${image.dataUrl.slice(-96)}`
         : `${image.path || ''}:${image.size}`,
@@ -295,7 +281,6 @@ async function prepareQuestionImages(
   const prepared: ImageAttachment[] = [];
   try {
     for (const file of files) {
-      // 旧 Agy 通过本地图片查看工具读取 path；HTTP 多模态端点则需要 dataUrl。
       prepared.push(await persistImageFile(file, endpointType !== 'agy'));
     }
     return prepared;
@@ -314,7 +299,6 @@ function parentDirectory(filePath: string): string {
 function mergeAssistantToolDirectories(doc: Document, paths: string[], persist = false): string[] {
   const current = assistantToolDirectories.get(doc) || [];
   const next = [...current, ...paths.map(parentDirectory).filter(Boolean)];
-  // client.ts 会做最终的路径净化；这里仅限制数量并保持当前论文优先。
   const unique: string[] = [];
   const seen = new Set<string>();
   for (const value of next) {
@@ -425,8 +409,6 @@ async function readReaderFullText(attachment: any): Promise<string> {
       const zoteroFile: any = (Zotero as any).File;
       if (!fullTextAPI || !zoteroFile?.getContentsAsync || !fullTextAPI.getItemCacheFile) return '';
 
-      // Zotero 默认可能只索引前若干页。先检查状态，不完整时显式要求完整提取，
-      // 这样 AI 助手不会把“已索引的前几页”误报成整篇论文。
       let fullyIndexed: boolean | null = null;
       if (typeof fullTextAPI.isFullyIndexed === 'function') {
         try {
@@ -440,8 +422,6 @@ async function readReaderFullText(attachment: any): Promise<string> {
             fullyIndexed = Boolean(await fullTextAPI.isFullyIndexed(attachment));
           } catch (_) {}
         } else {
-          // indexItems(..., { complete: true }) is the strongest API available
-          // on older Zotero builds when no state probe is exposed.
           fullyIndexed = true;
         }
       }
@@ -519,7 +499,6 @@ function refreshReaderPaperInfo(
   assistantPaperRefreshTokens.set(doc, token);
   void buildReaderPaperInfo(reader)
     .then((info) => {
-      // renderToolbar 可能在异步读取元数据期间再次触发；只接受最后一次绑定结果。
       if (assistantPaperRefreshTokens.get(doc) !== token) return;
       assistantToolDirectories.delete(doc);
       mergeAssistantToolDirectories(doc, [info.filePath || ''], true);
@@ -549,7 +528,6 @@ async function askAssistantSidebar(
 
   const config = loadConfig();
   const cache = getTranslationCache(config);
-  // 先把当前问题放进对话流；图片预处理失败时也能保留用户刚刚提交的问题。
   sidebar.setLoading(question);
   let imageAttachments: ImageAttachment[] = [];
   try {
@@ -616,7 +594,6 @@ async function askAssistantSidebar(
       }
     );
   } catch (_) {
-    // 错误已经通过 onError 呈现；用户主动关闭/切换时不显示失败。
   } finally {
     await cleanupQuestionImages(imageAttachments);
   }
@@ -624,9 +601,6 @@ async function askAssistantSidebar(
 
 function findAssistantLayoutTarget(doc: Document): HTMLElement | null {
   const selectors = [
-    // Zotero reader.html owns the PDF iframe inside this flex viewport.
-    // Reflowing it moves the complete page/spread instead of shifting an
-    // inner PDF.js element underneath the assistant.
     '#split-view',
     '.split-view',
     '#primary-view',
@@ -666,11 +640,6 @@ function restoreAssistantReaderLayout(doc: Document, keepResizeListener = false)
   if (!keepResizeListener) assistantLayouts.delete(doc);
 }
 
-/**
- * Let the PDF viewport give the assistant its own column on wide readers.
- * Small windows keep the overlay behavior so the paper never becomes
- * narrower than a usable reading width.
- */
 function applyAssistantReaderLayout(doc: Document, sidebarElement: HTMLElement, open: boolean): void {
   if (!open) {
     restoreAssistantReaderLayout(doc);
@@ -711,8 +680,6 @@ function applyAssistantReaderLayout(doc: Document, sidebarElement: HTMLElement, 
   const position = (view as any)?.getComputedStyle?.(state.target)?.position || '';
   state.target.style.transition = 'right 160ms ease, inset-inline-end 160ms ease, margin-right 160ms ease';
   if (position === 'absolute' || position === 'fixed' || position === 'sticky') {
-    // reader.css uses logical inset properties for #split-view. Set both
-    // forms so this also works in older Zotero PDF reader documents.
     state.target.style.setProperty('inset-inline-end', `${sidebarWidth}px`, 'important');
     state.target.style.setProperty('right', `${sidebarWidth}px`);
   } else {
@@ -764,8 +731,6 @@ function ensureStylesInjected(doc: Document): void {
   if (!doc.getElementById(styleId)) {
     const styleEl = doc.createElement('style');
     styleEl.id = styleId;
-    // KaTeX 的字体位于 XPI 的 fonts/ 目录；把占位根 URI 换成当前插件资源根，
-    // 避免 Zotero 阅读器把相对路径解析到 reader 文档自身。
     styleEl.textContent = PLUGIN_CSS.replace(/__GEMINI_ROOT__/g, pluginRootURI);
     const target = doc.head || doc.documentElement;
     if (target) {
@@ -788,16 +753,12 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
   listenerID = id;
   pluginRootURI = rootURI;
 
-  // Zotero 原生偏好页承载引擎、模型、端点和全文翻译设置，划词浮层不再内嵌配置表单。
   registerPreferencePane(rootURI, id, Zotero.getMainWindow?.());
 
-  // Agy 配置在插件启动时立即后台预热；DeepSeek/Gemini 仍按需请求。
   const startupConfig = loadConfig();
   exposeRuntimeBridge();
   syncAgySession(startupConfig);
 
-  // 状态栏属于 Zotero 主窗口，而全文翻译入口通常运行在阅读器 iframe；
-  // 启动时先挂载一次并注入主窗口样式，避免首次点击时跨文档挂载或无样式闪烁。
   try {
     const mainDocument = Zotero.getMainWindow?.()?.document;
     if (mainDocument) {
@@ -808,7 +769,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
     Zotero.debug?.(`[Gemini Translator] 初始化全文翻译状态栏失败: ${err.message || err}`);
   }
 
-  // 1. 注册 Zotero 7 原生 PDF 阅读器划选气泡事件
   popupHandler = async (event: any) => {
     let controller: any = null;
     try {
@@ -816,18 +776,13 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
       const rawText = params?.annotation?.text || '';
       if (!rawText || !rawText.trim()) return;
 
-      // 注入自适应 CSS 样式
       ensureStylesInjected(doc);
 
-      // 清洗 PDF 跨行断词与连字符
       const cleanedText = cleanPdfText(rawText);
       if (!cleanedText) return;
 
-      // 选区弹窗只是上下文入口；常驻 AI 助手侧栏如果已打开，始终同步
-      // 最近一次选区，但不自动弹出侧栏或改变用户当前的阅读布局。
       assistantSidebars.get(doc)?.setSelectedText(cleanedText);
 
-      // 切换到新的选区时，停止上一张卡片的问答请求，避免旧回答串到新选区。
       if (activeQuestionAbortController) {
         try {
           activeQuestionAbortController.abort();
@@ -852,8 +807,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 
         const config = loadConfig();
         const cache = getTranslationCache(config);
-        // 划词问答也复用当前阅读器的全文上下文。选区只负责定位用户
-        // 关注的段落；若常驻侧栏尚未创建，则安全回退到原来的选区问答。
         const paperContext = assistantSidebars.get(doc)?.getContext() || cleanedText;
         let imageAttachments: ImageAttachment[] = [];
         try {
@@ -928,19 +881,16 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
               }
             );
         } catch (_) {
-          // 已在 onError 回调中处理；取消请求属于预期行为。
         } finally {
           await cleanupQuestionImages(imageAttachments);
         }
       }
 
-      // 构建请求执行函数
       const doRequest = async () => {
         const config = loadConfig();
         const cache = getTranslationCache(config);
         const cacheKey = buildTranslationCacheKey(cleanedText, config);
 
-        // 检查 0ms LRU 内存缓存
         const cached = getValidatedTranslationCache(cache, cacheKey, cleanedText, doc);
         if (cached) {
           controller?.setDone(cached, true, config.enableKaTeX);
@@ -961,7 +911,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
           return;
         }
 
-        // 中断上一次未完成的翻译请求
         if (activeAbortController) {
           try {
             activeAbortController.abort();
@@ -994,8 +943,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
               },
               onError: (err) => {
                 if (abortController.signal.aborted) return;
-                // onError 在 pending Promise reject 之前触发；先移除失败项，
-                // 否则点击“重试”会再次拿到同一个已失败的 Promise。
                 if (translationInFlight.get(cacheKey) === pendingRequest) {
                   translationInFlight.delete(cacheKey);
                 }
@@ -1014,7 +961,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
         try {
           await pendingRequest;
         } catch (_) {
-          // 已在 onError 回调中处理
         } finally {
           if (translationInFlight.get(cacheKey) === pendingRequest) {
             translationInFlight.delete(cacheKey);
@@ -1022,7 +968,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
         }
       };
 
-      // 构建现代交互卡片并挂载到划选弹窗
       controller = createTranslationCard(doc, {
         onClose: () => {
           if (activeAbortController) {
@@ -1044,7 +989,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
       });
       append(controller.element);
 
-      // 容器协调一致性调谐：保持轻量工具条宽度，避免遮挡 PDF 正文
       try {
         const popup = (controller.element.closest?.('.selection-popup') ||
           doc.querySelector?.('.selection-popup')) as HTMLElement | null;
@@ -1064,7 +1008,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
         }
       } catch (_) {}
 
-      // 立即发起翻译请求
       doRequest();
     } catch (err: any) {
       Zotero.debug?.(`[Gemini Translator] 渲染浮窗失败: ${err}`);
@@ -1076,7 +1019,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 
   Zotero.Reader.registerEventListener('renderTextSelectionPopup', popupHandler, listenerID);
 
-  // 2. 注册 Zotero 7 原生 PDF 阅读器顶部工具栏按钮（⚡ 全文高保真翻译）
   toolbarHandler = async (event: any) => {
     try {
       const { reader, doc, append } = event;
@@ -1084,7 +1026,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 
       ensureStylesInjected(doc);
 
-      // 避免重复挂载按钮
       if (doc.getElementById('gemini-doc-translate-toolbar-btn')) return;
 
       const btn = doc.createElement('button');
@@ -1119,7 +1060,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
             return;
           }
 
-          // 获取条目的主元数据条目（若当前为附件，挂载至主文献条目）
           let targetItem = item;
           if (item.isAttachment && item.isAttachment() && item.parentItemID) {
             const parent = await Zotero.Items.getAsync(item.parentItemID);
@@ -1135,8 +1075,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 
       append(btn);
 
-      // 常驻 AI 助手入口：与全文翻译并列，只显示图标，点击后侧栏保持在
-      // 当前阅读器内，直到用户再次点击按钮或关闭侧栏。
       if (!doc.getElementById('gemini-assistant-toolbar-btn')) {
         const assistantButton = doc.createElement('button');
         let sidebar!: AssistantSidebarController;
@@ -1167,7 +1105,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 
   Zotero.Reader.registerEventListener('renderToolbar', toolbarHandler, listenerID);
 
-  // 3. 注册主界面文献条目右键菜单（支持在文献库列表中右键论文直接翻译）
   try {
     const initItemMenu = (win: any) => {
       const doc = win?.document;
@@ -1233,7 +1170,6 @@ export function startup({ id, version, rootURI }: { id: string; version: string;
 export function shutdown(): void {
   Zotero.debug?.('[Gemini Translator] 插件正在卸载/禁用');
   shuttingDown = true;
-  // 插件卸载时停止后台 PDF 子进程，避免留下孤儿 pdf2zh/Agy worker。
   documentTranslationManager.cancelAll();
   if (activeAbortController) {
     activeAbortController.abort();
@@ -1298,7 +1234,6 @@ export function shutdown(): void {
   shutdownAgySession();
 }
 
-// 确保在 Zotero 7 Sandbox / SubscriptLoader 环境下全局可访问
 if (typeof globalThis !== 'undefined') {
   const g = globalThis as any;
   g.install = install;

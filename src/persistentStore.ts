@@ -1,7 +1,3 @@
-/**
- * 小型本地持久化层：优先写入 Zotero.Prefs，测试/预览环境再回退到
- * 当前文档的 localStorage。这里只保存 JSON 文本，不接触网络。
- */
 export function readPersistentJson<T>(key: string, fallback: T, doc?: Document): T {
   const zotero = (globalThis as any).Zotero;
   try {

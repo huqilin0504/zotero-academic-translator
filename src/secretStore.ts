@@ -1,12 +1,3 @@
-/**
- * Secure storage for provider API keys.
- *
- * Zotero runs on Gecko, so use the browser login manager instead of writing
- * secrets into prefs.js. The login manager stores credentials in the profile's
- * encrypted login store (logins.json/key4.db on current Zotero builds).
- * Node/test and older restricted preview contexts return unavailable and let
- * callers decide whether to keep a legacy value for compatibility.
- */
 
 export type SecretProvider = 'deepseek' | 'gemini';
 
@@ -52,9 +43,6 @@ function getLoginManager(): any | null {
 
 function getLoginInfo(origin: string, realm: string, username: string, password: string): any | null {
   const globals = globalThis as any;
-  // Zotero 7 loads bootstrap modules in a privileged global where Components
-  // is not always exposed as an own property of globalThis. Prefer the legacy
-  // aliases first, then fall back to the Components object when available.
   const components = globals.Components;
   const classes = components?.classes || globals.Cc || (typeof Cc !== 'undefined' ? Cc : null);
   const interfaces = components?.interfaces || globals.Ci || (typeof Ci !== 'undefined' ? Ci : null);
@@ -106,10 +94,6 @@ function toLoginArray(logins: unknown): any[] {
 
 function findLogins(manager: any): any[] {
   if (typeof manager?.findLogins !== 'function') return [];
-  // Zotero 6/older Gecko exposed the XPCOM four-argument signature with a
-  // count object. Zotero 7's LoginManager.sys.mjs uses the modern three-
-  // argument signature. Calling the old signature on Zotero 7 silently
-  // searches for an object origin and never finds our credential.
   const logins = !manager.searchLoginsAsync && manager.findLogins.length >= 4
     ? manager.findLogins({}, LOGIN_ORIGIN, null, LOGIN_REALM)
     : manager.findLogins(LOGIN_ORIGIN, null, LOGIN_REALM);
@@ -127,7 +111,6 @@ async function findLoginsAsync(manager: any): Promise<any[]> {
   return findLogins(manager);
 }
 
-/** Read both provider keys without ever logging their values. */
 export function readSecureApiKeys(): SecureApiKeys {
   const manager = getLoginManager();
   if (!manager) return { ...EMPTY_SECURE_KEYS };
@@ -150,10 +133,6 @@ export function readSecureApiKeys(): SecureApiKeys {
   }
 }
 
-/**
- * Async counterpart used by current Zotero builds. Password storage is loaded
- * asynchronously in Gecko 128+, so settings writes must await this path.
- */
 export async function readSecureApiKeysAsync(): Promise<SecureApiKeys> {
   const manager = getLoginManager();
   if (!manager) return { ...EMPTY_SECURE_KEYS };
@@ -176,7 +155,6 @@ export async function readSecureApiKeysAsync(): Promise<SecureApiKeys> {
   }
 }
 
-/** Replace both provider credentials in one controlled operation. */
 export function writeSecureApiKeys(keys: Pick<SecureApiKeys, 'deepseekApiKey' | 'geminiApiKey'>): boolean {
   const manager = getLoginManager();
   if (!manager || typeof manager.addLogin !== 'function' || typeof manager.removeLogin !== 'function') {
@@ -207,7 +185,6 @@ export function writeSecureApiKeys(keys: Pick<SecureApiKeys, 'deepseekApiKey' | 
   }
 }
 
-/** Replace provider credentials using the async LoginManager API in Zotero 7+. */
 export async function writeSecureApiKeysAsync(
   keys: Pick<SecureApiKeys, 'deepseekApiKey' | 'geminiApiKey'>
 ): Promise<boolean> {
@@ -227,8 +204,6 @@ export async function writeSecureApiKeysAsync(
   if (!addLogin || !removeLogin) return false;
 
   try {
-    // Construct all entries before removing the old ones. A bad XPCOM
-    // constructor must not erase the credentials that were already stored.
     const newLogins: any[] = [];
     for (const provider of ['deepseek', 'gemini'] as const) {
       const key = String(keys[`${provider}ApiKey`] || '').trim();

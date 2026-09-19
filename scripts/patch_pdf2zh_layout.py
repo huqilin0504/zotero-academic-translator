@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
-# Downstream pdf2zh patch helper.
 """Patch pdf2zh's text reflow for Chinese PDF output.
 
 The upstream layout code only wrapped translated text when the source line
@@ -79,8 +78,6 @@ def patch(path: Path) -> bool:
                     or vy_regex                     # 3. 插入公式
                     or overflow                               # 4. 到达右边界
                 ):
-                    # 翻译后的中文不能沿用“原文是否换行”的开关，否则单行
-                    # 图注或短段落会直接越过栏宽。先换行，再决定是否拆词。
                     if overflow and cstk and not vy_regex and is_latin_word_char(ch):
                         word_match = re.search(r"[A-Za-z0-9][A-Za-z0-9_/'-]*$", cstk)
                     else:
@@ -140,9 +137,6 @@ def patch(path: Path) -> bool:
                     or vy_regex                     # 3. 插入公式
                     or overflow                     # 4. 到达右边界
                 ):
-                    # 翻译后的中文不能沿用“原文是否换行”的开关，否则单行
-                    # 图注或短段落会直接越过栏宽。英文单词在栏尾优先使用
-                    # 连字符断词，避免出现大块空白或把单词拆成无提示的乱码。
                     word_match = None
                     if overflow and not vy_regex and is_latin_word_char(ch):
                         word_match = re.search(r"[A-Za-z0-9][A-Za-z0-9_/'-]*$", cstk)
@@ -273,9 +267,6 @@ def patch(path: Path) -> bool:
             })
 
         def reflow_column_key(paragraph):
-            # Keep figure captions, full-width headings, page furniture and
-            # other anchors fixed. Only ordinary text blocks in the same
-            # visual column participate in vertical paragraph reflow.
             width = max(0.0, paragraph.x1 - paragraph.x0)
             if width > ltpage.width * 0.72:
                 return None
@@ -290,11 +281,6 @@ def patch(path: Path) -> bool:
             if key is not None:
                 column_groups.setdefault(key, []).append(item)
 
-        # pdf2zh normally writes every translated block back to its original
-        # y coordinate. That preserves anchors but leaves a large hole when a
-        # Chinese translation uses fewer lines than the English source. Pack
-        # blocks in reading order while retaining the exact source gap between
-        # the previous block's bottom and the next block's first line.
         for group in column_groups.values():
             group.sort(key=lambda item: (-item["paragraph"].y, item["paragraph"].x0))
             previous = None

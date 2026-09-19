@@ -1,7 +1,5 @@
-/* Zotero 7 翻译插件 - 轻量工具条 UI 规范 */
 
 :root {
-  /* 基础冷色调体系 (Cool Slate & Titanium Blue) */
   --slate-50: #f8fafc;
   --slate-100: #f1f5f9;
   --slate-200: #e2e8f0;
@@ -13,19 +11,16 @@
   --slate-800: #1e293b;
   --slate-900: #0f172a;
 
-  /* 主色调 (冷钴蓝) */
   --cool-primary: #2563eb;
   --cool-primary-hover: #1d4ed8;
   --cool-primary-subtle: #eff6ff;
   --cool-primary-border: #bfdbfe;
 
-  /* 功能色 */
   --cool-success: #059669;
   --cool-success-subtle: #ecfdf5;
   --cool-danger: #dc2626;
   --cool-danger-subtle: #fef2f2;
 
-  /* 划词翻译卡片语义变量 */
   --gemini-bg: #ffffff;
   --gemini-text: #0f172a;
   --gemini-text-secondary: #475569;
@@ -39,14 +34,12 @@
   --gemini-error-bg: var(--cool-danger-subtle);
   --gemini-error-text: var(--cool-danger);
 
-  /* 全文翻译模态弹窗语义变量 */
   --modal-surface: #ffffff;
   --modal-container: #f1f5f9;
   --modal-on-surface: #0f172a;
   --modal-on-surface-variant: #475569;
   --modal-border: #e2e8f0;
   --modal-track: #e2e8f0;
-  /* Google Sans 风格：优先使用 Google Sans/Inter，中文回退到 Noto Sans CJK。 */
   --modal-font: "Google Sans", "Google Sans Text", Inter, "Noto Sans SC", "Noto Sans CJK SC", "Noto Sans", Roboto, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -74,7 +67,6 @@
   }
 }
 
-/* 划选弹窗宿主容器尺寸与间距适配 */
 .selection-popup.has-gemini-card,
 .selection-popup:has(.gemini-translate-card) {
   width: min(286px, calc(100vw - 16px)) !important;
@@ -100,7 +92,6 @@
   border-top: 1px solid rgba(148, 163, 184, 0.18) !important;
 }
 
-/* 划词翻译卡片：贴近 Zotero 原生工具条，不使用 AI 品牌胶囊 */
 .gemini-translate-card {
   font-family: var(--modal-font);
   position: relative;
@@ -142,7 +133,6 @@
   letter-spacing: 0;
 }
 
-/* 状态保持为内联文字，不再使用胶囊徽章 */
 .gemini-status {
   display: inline-flex;
   align-items: center;
@@ -186,7 +176,6 @@
   gap: 2px;
 }
 
-/* 只保留熟悉的图标动作，触屏/键盘仍有足够命中面积 */
 .gemini-btn-icon {
   width: 22px;
   height: 22px;
@@ -257,7 +246,6 @@
   overflow-wrap: anywhere;
 }
 
-/* 模型回答的 Markdown：保留层级和节奏，但控制在 Zotero 划词卡片的密度内。 */
 .gemini-markdown {
   overflow-wrap: anywhere;
 }
@@ -403,17 +391,14 @@
   overflow-wrap: anywhere;
 }
 
-/* 结果布局：默认只有译文，提问后切换为左右双栏。 */
 .gemini-result-columns {
   display: grid;
-  /* 未提问时只有译文，不能提前为隐藏的回答面板预留半列。 */
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 9px;
   min-width: 0;
 }
 
-/* 兼容旧的双栏结果标记；当前问答入口使用独立侧边栏，不会扩宽宿主弹窗。 */
 .gemini-translate-card.has-question .gemini-result-columns {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
@@ -443,7 +428,6 @@
   padding: 7px 8px 8px;
 }
 
-/* 提问输入与回答：输入区跨满整张卡片，回答面板位于译文右侧。 */
 .gemini-question-composer {
   display: flex;
   flex-direction: column;
@@ -729,7 +713,6 @@
   border-color: var(--gemini-primary-border);
 }
 
-/* 流式结果只保留细光标，不显示大块动画装饰 */
 .gemini-cursor {
   display: inline-block;
   width: 1px;
@@ -746,7 +729,6 @@
   50% { opacity: 0; }
 }
 
-/* 骨架屏：静态、低对比度，避免把翻译卡片做成聊天机器人 */
 .gemini-skeleton {
   display: flex;
   flex-direction: column;
@@ -765,7 +747,6 @@
   width: 45%;
 }
 
-/* 错误提示 */
 .gemini-error-box {
   background: var(--gemini-error-bg);
   color: var(--gemini-error-text);
@@ -800,7 +781,6 @@
   border: 0 !important;
 }
 
-/* KaTeX 样式兼容 */
 .katex-mathml {
   display: none !important;
 }
@@ -813,7 +793,6 @@
   font-size: 1.05em !important;
 }
 
-/* 全文翻译模态弹窗 - 极简圆润冷色调 */
 .gemini-modal-backdrop {
   position: fixed;
   top: 0;
@@ -945,7 +924,6 @@
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 
-/* 胶囊药丸 Chips */
 .gemini-feature-chips {
   display: flex;
   flex-wrap: wrap;
@@ -970,7 +948,6 @@
   }
 }
 
-/* 进度条 */
 .gemini-progress-container {
   background: var(--modal-container);
   border-radius: 18px;
@@ -1023,7 +1000,6 @@
   margin-top: 8px;
 }
 
-/* 全胶囊药丸操作按钮 */
 .gemini-modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -1083,7 +1059,6 @@
 }
 
 .gemini-toolbar-btn {
-  /* 工具栏只显示翻译图标，文字保留在 title/aria-label 中。 */
   width: 28px !important;
   min-width: 28px !important;
   max-width: 28px !important;
@@ -1122,7 +1097,6 @@
   color: var(--cool-primary);
 }
 
-/* 全文翻译后台状态栏：贴近 Zotero 工具栏的小型下拉菜单 */
 .gemini-task-status {
   position: fixed;
   top: 10px;
@@ -1320,14 +1294,6 @@
   line-height: 1.4;
 }
 
-/*
- * Zotero reader popover style
- *
- * Keep the plugin controls visually close to Zotero's reader settings panel:
- * compact rows, quiet separators, square controls, and one restrained accent
- * color.  This intentionally replaces the earlier rounded-card treatment
- * without changing the DOM or any interaction behavior.
- */
 :root {
   --zotero-popover-surface: #ffffff;
   --zotero-popover-subtle: #f5f6f7;
@@ -1354,7 +1320,6 @@
   }
 }
 
-/* 划词翻译卡片：像阅读器工具面板，而不是聊天气泡。 */
 .gemini-translate-card {
   background: var(--zotero-popover-surface) !important;
   color: var(--zotero-popover-text);
@@ -1481,7 +1446,6 @@
   font-size: 10.5px;
 }
 
-/* 全文翻译弹窗：沿用阅读器设置面板的紧凑分组与直角控件。 */
 .gemini-modal-backdrop {
   background: rgba(22, 27, 34, 0.18);
 }
@@ -1654,7 +1618,6 @@
   color: var(--zotero-popover-muted);
 }
 
-/* 后台任务下拉状态栏：同一套直角、细分隔线语言。 */
 .gemini-task-status-toggle,
 .gemini-task-status-panel {
   border-radius: 3px;
@@ -1693,7 +1656,6 @@
   background: var(--zotero-popover-accent);
 }
 
-/* Typography alignment: use Zotero/Firefox's native system-ui metrics. */
 :root {
   --zotero-popover-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Noto Sans", sans-serif;
   --zotero-popover-font-size: 13px;
@@ -1774,7 +1736,6 @@
   font-size: 11px;
 }
 
-/* 防止 Zotero 宿主的窄栏/书写模式把中文标签挤成竖排。 */
 .selection-popup:has(.gemini-translate-card) {
   min-width: 286px !important;
 }
@@ -1830,7 +1791,6 @@
   flex: 0 0 auto;
 }
 
-/* 划词翻译宿主：翻译卡片保持窄宽，问答面板作为右侧独立浮层。 */
 .gemini-translation-shell {
   position: relative;
   display: block;
@@ -1849,7 +1809,6 @@
   box-sizing: border-box;
 }
 
-/* 卡片内的标题、译文标题和正文共用同一条左右边界；长单词/链接只能在内容区内折行。 */
 .gemini-translate-card,
 .gemini-translate-card .gemini-card-header,
 .gemini-translate-card .gemini-translation-pane,
@@ -1912,7 +1871,6 @@
   writing-mode: horizontal-tb;
 }
 
-/* 由 ui.ts 根据实际视口计算偏移；这些状态只决定水平锚点，不允许面板把宿主撑宽。 */
 .gemini-question-panel.is-below {
   left: 0;
   right: auto;
@@ -1972,7 +1930,6 @@
   max-height: 340px;
 }
 
-/* 侧边栏打开时允许它溢出 Zotero 的选区浮层边界。 */
 .selection-popup:has(.gemini-question-panel:not([hidden])) {
   overflow: visible !important;
   z-index: 1000 !important;
@@ -1985,7 +1942,6 @@
   }
 }
 
-/* 问答是划词卡片的主操作，保留紧凑尺寸但明确显示文字入口。 */
 .gemini-btn-question {
   width: auto;
   min-width: 40px;
@@ -2003,10 +1959,6 @@
   line-height: 1;
 }
 
-/*
- * 选区翻译最终覆盖层：保留 Zotero 的紧凑边框，但给译文足够的阅读宽度。
- * 这些规则放在文件末尾，覆盖前面为旧窄卡片保留的兼容规则。
- */
 .selection-popup.has-gemini-card,
 .selection-popup:has(.gemini-translate-card) {
   width: min(360px, calc(100vw - 16px)) !important;
@@ -2033,7 +1985,6 @@
   scrollbar-gutter: stable;
 }
 
-/* 常驻 AI 助手：固定在当前 PDF 阅读器右侧，视觉上沿用 Zotero 的设置面板。 */
 .gemini-assistant-toolbar-btn {
   width: 28px !important;
   min-width: 28px !important;
@@ -2074,7 +2025,6 @@
   writing-mode: horizontal-tb;
 }
 
-/* 侧栏左边的可拖拽边界；扩大命中区但不遮挡论文正文。 */
 .gemini-assistant-resize-handle {
   position: absolute;
   z-index: 2;
@@ -2113,7 +2063,6 @@
   display: none !important;
 }
 
-/* 由 bootstrap.ts 在宽屏阅读器上动态设置 right/margin-right。 */
 .gemini-assistant-reader-reflow {
   transition: right 160ms ease, inset-inline-end 160ms ease, margin-right 160ms ease;
 }
@@ -2616,7 +2565,6 @@
   }
 }
 
-/* AI 助手 Gemini 风格：保留论文信息，上层动作轻量化，输入区变为圆角对话框。 */
 .gemini-assistant-header {
   min-height: 44px;
   padding: 0 10px 0 8px;
@@ -2698,7 +2646,6 @@
   user-select: none;
 }
 
-/* 论文信息按用户要求保持原来的顶部样式；标题行本身就是信息块的起点。 */
 .gemini-assistant-paper-summary {
   display: none;
 }
@@ -2935,8 +2882,6 @@
   text-align: right;
 }
 
-/* AI 助手聊天式阅读布局：回答区保持干净的白底消息流，接近 Zotero
-   内置阅读面板和参考图中的连续对话，而不是一组相互嵌套的卡片。 */
 .gemini-assistant-sidebar {
   background: var(--zotero-popover-surface, #fff);
   border-left-color: var(--zotero-popover-border, #dfe3e8);
