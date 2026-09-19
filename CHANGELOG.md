@@ -11,7 +11,7 @@
 
 ### 验证
 
-- `npm test`：114 项测试全部通过。
+- `npm test`：118 项测试全部通过。
 - 额外执行 1,000 组公式/普通文本回归压力测试，公式渲染和误判断言全部通过。
 - 重新构建并打包 `zotero-academic-translator-1.0.50.xpi`，通过 JavaScript 语法检查和 ZIP 完整性检查。
 
