@@ -16360,7 +16360,7 @@ ${text2}`;
     return result;
   }
   function normalizeBareMathNotation(text2) {
-    if (!text2 || !/[∈∉⊂⊆=≈≤≥]/u.test(text2) && !/[A-Za-z]\s+[A-Za-z0-9]/u.test(text2) && !/[A-Za-z]\s*[_^]/u.test(text2)) {
+    if (!text2 || !/[∈∉⊂⊆=≈≤≥]/u.test(text2) && !/[A-Za-z]\s+[A-Za-z0-9]/u.test(text2) && !/[A-Za-z]\s*[_^]/u.test(text2) && !/[A-Za-z](?=[ \t]*(?:表示|代表|个|设为|设定为|对应|数值|值为|represents|denotes|stands for|is set to))/u.test(text2)) {
       return text2;
     }
     const atom = String.raw`(?:\{[^{}\r\n]{1,80}\}|\([^()\r\n]{1,80}\)|[A-Za-z0-9⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉ᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿˢᵀᵁⱽᵂ]+)`;
@@ -16373,7 +16373,11 @@ ${text2}`;
       "gu"
     );
     const markedScriptPattern = new RegExp(
-      String.raw`(^|[^\\\p{L}\p{N}_$])` + String.raw`([A-Za-z])\s*([_^])\s*(\{[^{}\r\n]{1,40}\}|[A-Za-z0-9](?:[A-Za-z0-9+\-−–]{0,39}))` + String.raw`(?=[ \t]*(?:表示|代表|为|的|对应|数值|值|个|区域|图像块|` + String.raw`represents|denotes|stands for|is|value|of|[,.;:，。；：！？!?）\])|$)(?![A-Za-z]))`,
+      String.raw`(^|(?<![A-Za-z0-9_$\\]))` + String.raw`([A-Za-z])` + String.raw`((?:\s*[_^]\s*(?:\{[^{}\r\n]{1,40}\}|[A-Za-z0-9](?:[A-Za-z0-9+\-−–]{0,39}))){1,3})` + String.raw`(?=[ \t]*(?:表示|代表|为|的|对应|数值|值|个|区域|图像块|是|` + String.raw`represents|denotes|stands for|is|value|of|[,.;:，。；：！？!?）\])|$)(?![A-Za-z]))`,
+      "gu"
+    );
+    const bareVariablePattern = new RegExp(
+      String.raw`(^|(?<![A-Za-z0-9_$\\]))` + String.raw`([A-Za-z])` + String.raw`(?=[ \t]*(?:表示|代表|个|设为|设定为|对应|数值|值为|` + String.raw`represents|denotes|stands for|is set to)(?![A-Za-z]))`,
       "gu"
     );
     let result = "";
@@ -16383,9 +16387,11 @@ ${text2}`;
       pattern.lastIndex = cursor;
       flattenedScriptPattern.lastIndex = cursor;
       markedScriptPattern.lastIndex = cursor;
+      bareVariablePattern.lastIndex = cursor;
       const tensor = pattern.exec(text2);
       const flattenedScript = flattenedScriptPattern.exec(text2);
       const markedScript = markedScriptPattern.exec(text2);
+      const bareVariable = bareVariablePattern.exec(text2);
       let bare = tensor;
       let kind = "tensor";
       if (flattenedScript && (!bare || flattenedScript.index < bare.index)) {
@@ -16396,6 +16402,10 @@ ${text2}`;
         bare = markedScript;
         kind = "marked-script";
       }
+      if (bareVariable && (!bare || bareVariable.index < bare.index)) {
+        bare = bareVariable;
+        kind = "variable";
+      }
       if (explicit && (!bare || explicit.start <= bare.index)) {
         result += text2.slice(cursor, explicit.end);
         cursor = explicit.end;
@@ -16405,7 +16415,7 @@ ${text2}`;
         result += text2.slice(cursor);
         break;
       }
-      const prefix = bare[1] || "";
+      const prefix = kind === "marked-script" || kind === "variable" ? "" : bare[1] || "";
       const start = bare.index + prefix.length;
       if (start > cursor) result += text2.slice(cursor, start);
       if (kind === "script") {
@@ -16414,9 +16424,16 @@ ${text2}`;
         result += `$${base}^{${script2}}$`;
       } else if (kind === "marked-script") {
         const base = bare[2];
-        const operator = bare[3];
-        const script2 = bare[4].replace(/[−–]/gu, "-").replace(/^\{([\s\S]*)\}$/, "$1");
-        result += `$${base}${operator}{${script2}}$`;
+        const parts = Array.from(
+          bare[3].matchAll(/([_^])\s*(\{[^{}\r\n]{1,40}\}|[A-Za-z0-9](?:[A-Za-z0-9+\-−–]{0,39}))/gu),
+          ([, operator, rawScript]) => {
+            const script2 = rawScript.replace(/[−–]/gu, "-").replace(/^\{([\s\S]*)\}$/, "$1");
+            return `${operator}{${script2}}`;
+          }
+        ).join("");
+        result += `$${base}${parts}$`;
+      } else if (kind === "variable") {
+        result += `$${bare[2]}$`;
       } else {
         const left = bare[2];
         const operator = bare[3];

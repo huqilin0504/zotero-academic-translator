@@ -93,6 +93,17 @@ test('markdownRenderer: 划词翻译截图中的摊平上下标在段落中正�
   assert.equal(html.includes('P 1−N'), false);
 });
 
+test('markdownRenderer: 划词翻译截图中的裸变量和连续上下标正确显示', () => {
+  const html = renderMarkdownToHtml(
+    '其中n代表区域数量（图5中n设为3）。 f_i^j 表示第j个实例区域第i个补丁的特征向量。简而言之，V_i 是通过取出每个区域中的所有补丁并进行平均池化操作得到的。'
+  );
+
+  assert.equal(html.includes('katex-error'), false);
+  assert.equal(html.includes('f_i^j'), false);
+  assert.equal(html.includes('V_i'), false);
+  assert.equal((html.match(/katex/g) || []).length >= 6, true);
+});
+
 test('markdownRenderer: 划词翻译返回裸 ^/_ 公式时不依赖美元分隔符', () => {
   const html = renderMarkdownToHtml('P^c 表示热值，M_{i+1} 代表下一个索引，x_i 的值如下。');
 

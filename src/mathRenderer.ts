@@ -333,8 +333,9 @@ export function normalizeModelMathEscaping(text: string): string {
 /**
  * 恢复 API/PDF 文本中丢失分隔符的常见张量维度公式。
  *
- * 处理三类 PDF/API 常见退化形态：带集合关系且包含至少两个维度的张量，
- * 被空格摊平的上下标（如“P c”），以及保留 ^/_ 但缺少分隔符的变量。
+ * 处理四类 PDF/API 常见退化形态：带集合关系且包含至少两个维度的张量，
+ * 被空格摊平的上下标（如“P c”），保留 ^/_ 但缺少分隔符的变量（如
+ * “f_i^j”），以及在中文解释语境中没有分隔符的单字母变量（如“其中n代表”）。
  * 普通单词和已经被 $...$、\(...\) 或 \[...\] 包住的公式不会进入该规则，
  * 避免把正文误判成数学表达式。
  */
@@ -343,7 +344,8 @@ export function normalizeBareMathNotation(text: string): string {
     !text ||
     (!/[∈∉⊂⊆=≈≤≥]/u.test(text) &&
       !/[A-Za-z]\s+[A-Za-z0-9]/u.test(text) &&
-      !/[A-Za-z]\s*[_^]/u.test(text))
+      !/[A-Za-z]\s*[_^]/u.test(text) &&
+      !/[A-Za-z](?=[ \t]*(?:表示|代表|个|设为|设定为|对应|数值|值为|represents|denotes|stands for|is set to))/u.test(text))
   ) {
     return text;
   }
@@ -369,10 +371,20 @@ export function normalizeBareMathNotation(text: string): string {
   // 有些 API 会保留 ^/_，但仍省略 $...$ 分隔符。只在公式解释词或
   // 标点紧随其后时恢复，避免把普通标识符（例如 file_name）误转为公式。
   const markedScriptPattern = new RegExp(
-    String.raw`(^|[^\\\p{L}\p{N}_$])` +
-      String.raw`([A-Za-z])\s*([_^])\s*(\{[^{}\r\n]{1,40}\}|[A-Za-z0-9](?:[A-Za-z0-9+\-−–]{0,39}))` +
-      String.raw`(?=[ \t]*(?:表示|代表|为|的|对应|数值|值|个|区域|图像块|` +
+    String.raw`(^|(?<![A-Za-z0-9_$\\]))` +
+      String.raw`([A-Za-z])` +
+      String.raw`((?:\s*[_^]\s*(?:\{[^{}\r\n]{1,40}\}|[A-Za-z0-9](?:[A-Za-z0-9+\-−–]{0,39}))){1,3})` +
+      String.raw`(?=[ \t]*(?:表示|代表|为|的|对应|数值|值|个|区域|图像块|是|` +
       String.raw`represents|denotes|stands for|is|value|of|[,.;:，。；：！？!?）\])|$)(?![A-Za-z]))`,
+    'gu'
+  );
+  // 翻译结果还可能直接输出“其中n代表…”或“V_i 是…”。裸单字母只在
+  // 解释/定义语境中恢复，普通英文单词和文件名不会进入该规则。
+  const bareVariablePattern = new RegExp(
+    String.raw`(^|(?<![A-Za-z0-9_$\\]))` +
+      String.raw`([A-Za-z])` +
+      String.raw`(?=[ \t]*(?:表示|代表|个|设为|设定为|对应|数值|值为|` +
+      String.raw`represents|denotes|stands for|is set to)(?![A-Za-z]))`,
     'gu'
   );
 
@@ -383,11 +395,13 @@ export function normalizeBareMathNotation(text: string): string {
     pattern.lastIndex = cursor;
     flattenedScriptPattern.lastIndex = cursor;
     markedScriptPattern.lastIndex = cursor;
+    bareVariablePattern.lastIndex = cursor;
     const tensor = pattern.exec(text);
     const flattenedScript = flattenedScriptPattern.exec(text);
     const markedScript = markedScriptPattern.exec(text);
+    const bareVariable = bareVariablePattern.exec(text);
     let bare = tensor;
-    let kind: 'tensor' | 'script' | 'marked-script' = 'tensor';
+    let kind: 'tensor' | 'script' | 'marked-script' | 'variable' = 'tensor';
     if (flattenedScript && (!bare || flattenedScript.index < bare.index)) {
       bare = flattenedScript;
       kind = 'script';
@@ -395,6 +409,10 @@ export function normalizeBareMathNotation(text: string): string {
     if (markedScript && (!bare || markedScript.index < bare.index)) {
       bare = markedScript;
       kind = 'marked-script';
+    }
+    if (bareVariable && (!bare || bareVariable.index < bare.index)) {
+      bare = bareVariable;
+      kind = 'variable';
     }
 
     // 已有的数学分隔符优先；裸公式匹配只在普通文本区间内生效。
@@ -408,7 +426,7 @@ export function normalizeBareMathNotation(text: string): string {
       break;
     }
 
-    const prefix = bare[1] || '';
+    const prefix = kind === 'marked-script' || kind === 'variable' ? '' : bare[1] || '';
     const start = bare.index + prefix.length;
     if (start > cursor) result += text.slice(cursor, start);
 
@@ -418,9 +436,16 @@ export function normalizeBareMathNotation(text: string): string {
       result += `$${base}^{${script}}$`;
     } else if (kind === 'marked-script') {
       const base = bare[2];
-      const operator = bare[3];
-      const script = bare[4].replace(/[−–]/gu, '-').replace(/^\{([\s\S]*)\}$/, '$1');
-      result += `$${base}${operator}{${script}}$`;
+      const parts = Array.from(
+        bare[3].matchAll(/([_^])\s*(\{[^{}\r\n]{1,40}\}|[A-Za-z0-9](?:[A-Za-z0-9+\-−–]{0,39}))/gu),
+        ([, operator, rawScript]) => {
+          const script = rawScript.replace(/[−–]/gu, '-').replace(/^\{([\s\S]*)\}$/, '$1');
+          return `${operator}{${script}}`;
+        }
+      ).join('');
+      result += `$${base}${parts}$`;
+    } else if (kind === 'variable') {
+      result += `$${bare[2]}$`;
     } else {
       const left = bare[2];
       const operator = bare[3];

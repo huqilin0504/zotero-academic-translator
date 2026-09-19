@@ -185,6 +185,24 @@ test('mathRenderer: PDF 文本层摊平上下标时恢复截图中的 P、M 和�
   assert.equal(html.includes('P 1−N'), false);
 });
 
+test('mathRenderer: 截图中的中文译文裸变量和连续上下标全部恢复', () => {
+  const input =
+    '其中n代表区域数量（图5中n设为3）。 f_i^j 表示第j个实例区域第i个补丁的特征向量。简而言之，V_i 是通过取出每个区域中的所有补丁并进行平均池化操作得到的。';
+  const normalized = normalizeBareMathNotation(input);
+
+  assert.equal(normalized.includes('$n$'), true);
+  assert.equal(normalized.includes('$f_{i}^{j}$'), true);
+  assert.equal(normalized.includes('$j$'), true);
+  assert.equal(normalized.includes('$i$'), true);
+  assert.equal(normalized.includes('$V_{i}$'), true);
+
+  const html = renderMathToHtml(input);
+  assert.equal(html.includes('katex-error'), false);
+  assert.equal(html.includes('f_i^j'), false);
+  assert.equal(html.includes('V_i'), false);
+  assert.equal((html.match(/katex/g) || []).length >= 6, true);
+});
+
 test('mathRenderer: 常见数学表达式组合回归', () => {
   const input = [
     '行内 $x_i$ 与 \\(y^2\\)。',
