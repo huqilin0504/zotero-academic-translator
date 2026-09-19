@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import {
   checkExecutable,
   copyTextToClipboard,
+  getExecutableCandidates,
   getAbortController,
   getFetch,
   getTextDecoder,
@@ -166,4 +167,75 @@ test('env: 可执行文件检查支持 PATH/绝对路径并能报告缺失命令
 
   const missing = await checkExecutable('/tmp/definitely-missing-gemini-translator-tool');
   assert.equal(missing.available, false);
+});
+
+test('env: Zotero 桌面启动时为 bare agy 命令补充用户 bin 路径', () => {
+  const globals = globalThis as any;
+  const previousServices = globals.Services;
+  globals.Services = {
+    env: {
+      get(name: string) {
+        return {
+          HOME: '/tmp/gemini-translator-home',
+          PATH: '/usr/bin',
+          OS: 'Linux',
+        }[name] || '';
+      },
+    },
+  };
+
+  try {
+    const candidates = getExecutableCandidates('agy');
+    assert.equal(candidates[0], 'agy');
+    assert.equal(candidates.includes('/tmp/gemini-translator-home/.local/bin/agy'), true);
+    assert.equal(candidates.includes('/usr/bin/agy'), true);
+  } finally {
+    if (previousServices === undefined) delete globals.Services;
+    else globals.Services = previousServices;
+  }
+});
+
+test('env: Gecko Subprocess 找不到 bare 命令时会尝试自动发现的绝对路径', async () => {
+  const globals = globalThis as any;
+  const previousServices = globals.Services;
+  const previousChromeUtils = globals.ChromeUtils;
+  const calls: string[] = [];
+  const resolved = '/tmp/gemini-translator-home/.local/bin/agy';
+  globals.Services = {
+    env: {
+      get(name: string) {
+        return {
+          HOME: '/tmp/gemini-translator-home',
+          PATH: '/usr/bin',
+          OS: 'Linux',
+        }[name] || '';
+      },
+    },
+  };
+  globals.ChromeUtils = {
+    importESModule() {
+      return {
+        Subprocess: {
+          call: async ({ command }: { command: string }) => {
+            calls.push(command);
+            if (command !== resolved) throw new Error(`File at path '${command}' does not exist`);
+            return { wait: async () => ({ exitCode: 0 }) };
+          },
+        },
+      };
+    },
+  };
+
+  try {
+    const result = await checkExecutable('agy');
+    assert.equal(result.available, true);
+    assert.match(result.detail, /自动找到/);
+    assert.equal(calls.includes('agy'), true);
+    assert.equal(calls.includes(resolved), true);
+  } finally {
+    if (previousServices === undefined) delete globals.Services;
+    else globals.Services = previousServices;
+    if (previousChromeUtils === undefined) delete globals.ChromeUtils;
+    else globals.ChromeUtils = previousChromeUtils;
+  }
 });

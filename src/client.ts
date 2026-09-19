@@ -1,5 +1,5 @@
 import { ImageAttachment, PluginConfig, StreamCallbacks } from './types';
-import { getFetch, getTextDecoder, getSubprocess } from './env';
+import { getFetch, getTextDecoder, getSubprocess, getExecutableCandidates } from './env';
 import { getApiKeyForEndpoint, normalizeModelForEndpoint } from './config';
 import { readPersistentJson, writePersistentJson } from './persistentStore';
 
@@ -351,33 +351,38 @@ export class AgyWorker {
 
     // 1. Zotero 7 原生环境 (Mozilla Subprocess XPCOM)
     if (Subprocess?.call) {
-      try {
-        this.proc = await Subprocess.call({
-          command: this.agyBin,
-          arguments: args,
-          environment: {
-            AGY_TRANSLATION_ONLY: '1',
-          },
-          environmentAppend: true,
-          workdir: '/tmp',
-          stdin: 'pipe',
-          stdout: 'pipe',
-          stderr: 'pipe',
-        });
-        this.alive = true;
-        this.isNode = false;
-        this.readyTimer = setTimeout(() => {
-          this.failReady(new Error('agy 启动超时：未收到初始化事件，请检查登录状态和模型配置'));
-          this.kill();
-        }, 30000);
-        this.readGeckoStderr();
-        this.readGeckoLoop();
-        return;
-      } catch (err: any) {
-        const error = new Error(`无法启动本机 agy (${this.agyBin})。请检查路径或执行权限: ${err.message}`);
-        this.failReady(error);
-        throw error;
+      let lastError: any = null;
+      for (const command of getExecutableCandidates(this.agyBin)) {
+        try {
+          this.proc = await Subprocess.call({
+            command,
+            arguments: args,
+            environment: {
+              AGY_TRANSLATION_ONLY: '1',
+            },
+            environmentAppend: true,
+            workdir: '/tmp',
+            stdin: 'pipe',
+            stdout: 'pipe',
+            stderr: 'pipe',
+          });
+          this.alive = true;
+          this.isNode = false;
+          this.readyTimer = setTimeout(() => {
+            this.failReady(new Error('agy 启动超时：未收到初始化事件，请检查登录状态和模型配置'));
+            this.kill();
+          }, 30000);
+          this.readGeckoStderr();
+          this.readGeckoLoop();
+          return;
+        } catch (err: any) {
+          lastError = err;
+        }
       }
+      const detail = lastError?.message || String(lastError || '没有可尝试的可执行文件');
+      const error = new Error(`无法启动本机 agy (${this.agyBin})。请检查路径或执行权限: ${detail}`);
+      this.failReady(error);
+      throw error;
     }
 
     // 2. Node.js 测试环境 (node:child_process)

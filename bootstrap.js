@@ -600,35 +600,94 @@
     }
     return null;
   }
+  function readRuntimeEnvironment(name) {
+    const globals = globalThis;
+    try {
+      const services = globals.Services || globals.ChromeUtils?.importESModule?.(
+        "resource://gre/modules/Services.sys.mjs"
+      )?.Services;
+      const value = services?.env?.get?.(name);
+      if (value) return String(value);
+    } catch (_) {
+    }
+    try {
+      const value = globals.process?.env?.[name];
+      if (value) return String(value);
+    } catch (_) {
+    }
+    return "";
+  }
+  function isPathLikeExecutable(value) {
+    return value.includes("/") || value.includes("\\") || /^[A-Za-z]:/.test(value);
+  }
+  function joinExecutablePath(directory, executable) {
+    const normalizedDirectory = directory.replace(/[\\/]+$/, "");
+    const separator = normalizedDirectory.includes("\\") && !normalizedDirectory.includes("/") ? "\\" : "/";
+    const normalizedExecutable = separator === "\\" ? executable.replace(/\//g, "\\") : executable.replace(/\\/g, "/");
+    return `${normalizedDirectory}${separator}${normalizedExecutable}`;
+  }
+  function getExecutableCandidates(command) {
+    const raw = String(command || "").trim();
+    if (!raw) return [];
+    const home = readRuntimeEnvironment("HOME") || readRuntimeEnvironment("USERPROFILE");
+    const expanded = raw.startsWith("~/") && home ? joinExecutablePath(home, raw.slice(2)) : raw;
+    if (isPathLikeExecutable(expanded)) return [expanded];
+    const pathValue = readRuntimeEnvironment("PATH");
+    const pathSeparator = pathValue.includes(";") ? ";" : ":";
+    const directories = pathValue.split(pathSeparator).filter(Boolean);
+    if (home) {
+      directories.unshift(joinExecutablePath(home, ".local/bin"));
+      directories.unshift(joinExecutablePath(home, "bin"));
+    }
+    const platform = `${readRuntimeEnvironment("OS")} ${readRuntimeEnvironment("OSTYPE")}`.toLowerCase();
+    const isWindows = pathSeparator === ";" || platform.includes("windows") || platform.includes("win32");
+    if (!isWindows) directories.push("/usr/local/bin", "/usr/bin", "/bin");
+    const names = [raw];
+    if (isWindows && !/\.exe$/i.test(raw)) names.push(`${raw}.exe`);
+    const candidates = [];
+    for (const name of names) {
+      candidates.push(name);
+      for (const directory of directories) candidates.push(joinExecutablePath(directory, name));
+    }
+    return [...new Set(candidates)];
+  }
   async function checkExecutable(command) {
     const target = String(command || "").trim();
     if (!target) return { command: target, available: false, detail: "\u672A\u586B\u5199\u53EF\u6267\u884C\u6587\u4EF6\u540D\u6216\u8DEF\u5F84" };
+    const candidates = getExecutableCandidates(target);
     const Subprocess = getSubprocess();
     if (Subprocess?.call) {
-      try {
-        const proc = await Subprocess.call({
-          command: target,
-          arguments: ["--version"],
-          environmentAppend: true,
-          workdir: "/tmp",
-          stdout: "pipe",
-          stderr: "pipe"
-        });
-        const { exitCode } = await proc.wait();
-        return {
-          command: target,
-          available: exitCode === 0,
-          detail: exitCode === 0 ? "\u53EF\u7528" : `\u7248\u672C\u63A2\u9488\u9000\u51FA\u7801 ${exitCode}`
-        };
-      } catch (err) {
-        return { command: target, available: false, detail: err?.message || String(err) };
+      let lastDetail = "\u5F53\u524D\u73AF\u5883\u65E0\u6CD5\u542F\u52A8\u8FDB\u7A0B";
+      for (const candidate of candidates) {
+        try {
+          const proc = await Subprocess.call({
+            command: candidate,
+            arguments: ["--version"],
+            environmentAppend: true,
+            workdir: "/tmp",
+            stdout: "pipe",
+            stderr: "pipe"
+          });
+          const { exitCode } = await proc.wait();
+          if (exitCode === 0) {
+            return {
+              command: target,
+              available: true,
+              detail: candidate === target ? "\u53EF\u7528" : `\u53EF\u7528\uFF08\u81EA\u52A8\u627E\u5230 ${candidate}\uFF09`
+            };
+          }
+          lastDetail = `\u7248\u672C\u63A2\u9488\u9000\u51FA\u7801 ${exitCode}`;
+        } catch (err) {
+          lastDetail = err?.message || String(err);
+        }
       }
+      return { command: target, available: false, detail: lastDetail };
     }
     if (typeof process !== "undefined" && process.versions?.node) {
       try {
         const childProcess = await import("node:child_process");
         const result = await new Promise((resolve) => {
-          const child = childProcess.spawn(target, ["--version"], { stdio: "ignore", windowsHide: true });
+          const child = childProcess.spawn(candidates[0] || target, ["--version"], { stdio: "ignore", windowsHide: true });
           child.once("error", (error) => resolve({ code: null, error }));
           child.once("close", (code) => resolve({ code }));
         });
@@ -1020,33 +1079,38 @@ ${userPrompt}` }];
       const args = buildAgyArgs(this.model, this.effort, this.conversationId);
       this.stderrBuffer = "";
       if (Subprocess?.call) {
-        try {
-          this.proc = await Subprocess.call({
-            command: this.agyBin,
-            arguments: args,
-            environment: {
-              AGY_TRANSLATION_ONLY: "1"
-            },
-            environmentAppend: true,
-            workdir: "/tmp",
-            stdin: "pipe",
-            stdout: "pipe",
-            stderr: "pipe"
-          });
-          this.alive = true;
-          this.isNode = false;
-          this.readyTimer = setTimeout(() => {
-            this.failReady(new Error("agy \u542F\u52A8\u8D85\u65F6\uFF1A\u672A\u6536\u5230\u521D\u59CB\u5316\u4E8B\u4EF6\uFF0C\u8BF7\u68C0\u67E5\u767B\u5F55\u72B6\u6001\u548C\u6A21\u578B\u914D\u7F6E"));
-            this.kill();
-          }, 3e4);
-          this.readGeckoStderr();
-          this.readGeckoLoop();
-          return;
-        } catch (err) {
-          const error2 = new Error(`\u65E0\u6CD5\u542F\u52A8\u672C\u673A agy (${this.agyBin})\u3002\u8BF7\u68C0\u67E5\u8DEF\u5F84\u6216\u6267\u884C\u6743\u9650: ${err.message}`);
-          this.failReady(error2);
-          throw error2;
+        let lastError = null;
+        for (const command of getExecutableCandidates(this.agyBin)) {
+          try {
+            this.proc = await Subprocess.call({
+              command,
+              arguments: args,
+              environment: {
+                AGY_TRANSLATION_ONLY: "1"
+              },
+              environmentAppend: true,
+              workdir: "/tmp",
+              stdin: "pipe",
+              stdout: "pipe",
+              stderr: "pipe"
+            });
+            this.alive = true;
+            this.isNode = false;
+            this.readyTimer = setTimeout(() => {
+              this.failReady(new Error("agy \u542F\u52A8\u8D85\u65F6\uFF1A\u672A\u6536\u5230\u521D\u59CB\u5316\u4E8B\u4EF6\uFF0C\u8BF7\u68C0\u67E5\u767B\u5F55\u72B6\u6001\u548C\u6A21\u578B\u914D\u7F6E"));
+              this.kill();
+            }, 3e4);
+            this.readGeckoStderr();
+            this.readGeckoLoop();
+            return;
+          } catch (err) {
+            lastError = err;
+          }
         }
+        const detail = lastError?.message || String(lastError || "\u6CA1\u6709\u53EF\u5C1D\u8BD5\u7684\u53EF\u6267\u884C\u6587\u4EF6");
+        const error2 = new Error(`\u65E0\u6CD5\u542F\u52A8\u672C\u673A agy (${this.agyBin})\u3002\u8BF7\u68C0\u67E5\u8DEF\u5F84\u6216\u6267\u884C\u6743\u9650: ${detail}`);
+        this.failReady(error2);
+        throw error2;
       }
       if (typeof process !== "undefined" && process.versions?.node) {
         try {

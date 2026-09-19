@@ -213,6 +213,71 @@ export function getSubprocess(): any {
   return null;
 }
 
+function readRuntimeEnvironment(name: string): string {
+  const globals = globalThis as any;
+  try {
+    const services = globals.Services || globals.ChromeUtils?.importESModule?.(
+      'resource://gre/modules/Services.sys.mjs'
+    )?.Services;
+    const value = services?.env?.get?.(name);
+    if (value) return String(value);
+  } catch (_) {}
+  try {
+    const value = globals.process?.env?.[name];
+    if (value) return String(value);
+  } catch (_) {}
+  return '';
+}
+
+function isPathLikeExecutable(value: string): boolean {
+  return value.includes('/') || value.includes('\\') || /^[A-Za-z]:/.test(value);
+}
+
+function joinExecutablePath(directory: string, executable: string): string {
+  const normalizedDirectory = directory.replace(/[\\/]+$/, '');
+  const separator = normalizedDirectory.includes('\\') && !normalizedDirectory.includes('/') ? '\\' : '/';
+  const normalizedExecutable = separator === '\\' ? executable.replace(/\//g, '\\') : executable.replace(/\\/g, '/');
+  return `${normalizedDirectory}${separator}${normalizedExecutable}`;
+}
+
+/**
+ * Subprocess.sys.mjs 在部分 Zotero/Gecko 版本中不会像 Node spawn 一样
+ * 自动搜索 PATH，而桌面启动 Zotero 也可能没有继承 shell 的 PATH。
+ * 为命令名补充当前环境 PATH、用户 bin 目录和常见 Unix 目录候选，调用方
+ * 可以按顺序尝试，避免把维护者机器的绝对路径写入默认配置。
+ */
+export function getExecutableCandidates(command: string): string[] {
+  const raw = String(command || '').trim();
+  if (!raw) return [];
+
+  const home = readRuntimeEnvironment('HOME') || readRuntimeEnvironment('USERPROFILE');
+  const expanded = raw.startsWith('~/') && home
+    ? joinExecutablePath(home, raw.slice(2))
+    : raw;
+  if (isPathLikeExecutable(expanded)) return [expanded];
+
+  const pathValue = readRuntimeEnvironment('PATH');
+  const pathSeparator = pathValue.includes(';') ? ';' : ':';
+  const directories = pathValue.split(pathSeparator).filter(Boolean);
+  if (home) {
+    directories.unshift(joinExecutablePath(home, '.local/bin'));
+    directories.unshift(joinExecutablePath(home, 'bin'));
+  }
+
+  const platform = `${readRuntimeEnvironment('OS')} ${readRuntimeEnvironment('OSTYPE')}`.toLowerCase();
+  const isWindows = pathSeparator === ';' || platform.includes('windows') || platform.includes('win32');
+  if (!isWindows) directories.push('/usr/local/bin', '/usr/bin', '/bin');
+
+  const names = [raw];
+  if (isWindows && !/\.exe$/i.test(raw)) names.push(`${raw}.exe`);
+  const candidates: string[] = [];
+  for (const name of names) {
+    candidates.push(name);
+    for (const directory of directories) candidates.push(joinExecutablePath(directory, name));
+  }
+  return [...new Set(candidates)];
+}
+
 export interface ExecutableCheckResult {
   command: string;
   available: boolean;
@@ -226,34 +291,42 @@ export interface ExecutableCheckResult {
 export async function checkExecutable(command: string): Promise<ExecutableCheckResult> {
   const target = String(command || '').trim();
   if (!target) return { command: target, available: false, detail: '未填写可执行文件名或路径' };
+  const candidates = getExecutableCandidates(target);
 
   const Subprocess = getSubprocess();
   if (Subprocess?.call) {
-    try {
-      const proc = await Subprocess.call({
-        command: target,
-        arguments: ['--version'],
-        environmentAppend: true,
-        workdir: '/tmp',
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      const { exitCode } = await proc.wait();
-      return {
-        command: target,
-        available: exitCode === 0,
-        detail: exitCode === 0 ? '可用' : `版本探针退出码 ${exitCode}`,
-      };
-    } catch (err: any) {
-      return { command: target, available: false, detail: err?.message || String(err) };
+    let lastDetail = '当前环境无法启动进程';
+    for (const candidate of candidates) {
+      try {
+        const proc = await Subprocess.call({
+          command: candidate,
+          arguments: ['--version'],
+          environmentAppend: true,
+          workdir: '/tmp',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        const { exitCode } = await proc.wait();
+        if (exitCode === 0) {
+          return {
+            command: target,
+            available: true,
+            detail: candidate === target ? '可用' : `可用（自动找到 ${candidate}）`,
+          };
+        }
+        lastDetail = `版本探针退出码 ${exitCode}`;
+      } catch (err: any) {
+        lastDetail = err?.message || String(err);
+      }
     }
+    return { command: target, available: false, detail: lastDetail };
   }
 
   if (typeof process !== 'undefined' && (process as any).versions?.node) {
     try {
       const childProcess: any = await import('node:child_process');
       const result = await new Promise<{ code: number | null; error?: Error }>((resolve) => {
-        const child = childProcess.spawn(target, ['--version'], { stdio: 'ignore', windowsHide: true });
+        const child = childProcess.spawn(candidates[0] || target, ['--version'], { stdio: 'ignore', windowsHide: true });
         child.once('error', (error: Error) => resolve({ code: null, error }));
         child.once('close', (code: number | null) => resolve({ code }));
       });
